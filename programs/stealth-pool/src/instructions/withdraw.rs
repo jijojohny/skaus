@@ -104,7 +104,7 @@ pub fn handler(
         .checked_sub(fee)
         .ok_or(StealthPoolError::InsufficientWithdrawalAmount)?;
 
-    // Build public inputs and verify Groth16 proof
+    // Build public inputs (5 x 32-byte BN254 field elements) and verify Groth16 proof
     let public_inputs = verifier::build_public_inputs(
         &merkle_root,
         &nullifier_hash,

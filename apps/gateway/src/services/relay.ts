@@ -180,15 +180,17 @@ export class RelayService {
       tokenMint, recipient, true,
     );
 
-    // Fee token account — for now routes to the pool authority.
-    // In production this will be a dedicated fee vault ATA.
+    // Parse fee_vault pubkey from on-chain pool account data.
+    // StealthPool layout: disc(8) + authority(32) + token_mint(32) + fee_bps(2) +
+    //   min_deposit(8) + max_deposit(8) + total_deposits(8) + total_withdrawals(8) +
+    //   deposit_count(8) + withdrawal_count(8) + current_merkle_index(4) + paused(1) +
+    //   merkle_root(32) + fee_vault(32) + bump(1)
+    const FEE_VAULT_OFFSET = 8 + 32 + 32 + 2 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 1 + 32; // = 151
     const poolAccount = await this.connection.getAccountInfo(poolPda);
     let feeTokenAccount: PublicKey;
-    if (poolAccount) {
-      // Parse authority from pool account (offset: 8 discriminator, first 32 bytes)
-      const authority = new PublicKey(poolAccount.data.slice(8, 40));
-      feeTokenAccount = await getAssociatedTokenAddress(
-        tokenMint, authority,
+    if (poolAccount && poolAccount.data.length >= FEE_VAULT_OFFSET + 32) {
+      feeTokenAccount = new PublicKey(
+        poolAccount.data.slice(FEE_VAULT_OFFSET, FEE_VAULT_OFFSET + 32)
       );
     } else {
       feeTokenAccount = poolTokenAccount;

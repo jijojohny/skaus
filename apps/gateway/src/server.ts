@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import { relayRoutes } from './routes/relay';
 import { payLinkRoutes } from './routes/paylink';
 import { healthRoutes } from './routes/health';
+import { indexerRoutes } from './routes/indexer';
 import { config } from './config';
 
 async function buildServer() {
@@ -29,6 +30,7 @@ async function buildServer() {
   await app.register(healthRoutes, { prefix: '/' });
   await app.register(relayRoutes, { prefix: '/relay' });
   await app.register(payLinkRoutes, { prefix: '/pay' });
+  await app.register(indexerRoutes, { prefix: '/indexer' });
 
   return app;
 }

@@ -1,51 +1,58 @@
-import { sha256 } from '@noble/hashes/sha256';
+/**
+ * Commitment and nullifier hash computation matching the ZK circuit.
+ *
+ * The circuit uses Poseidon over BN254:
+ *   commitment    = Poseidon(secret, nullifier, amount)
+ *   nullifierHash = Poseidon(nullifier)
+ *
+ * Client-side we use circomlibjs to produce identical hashes.
+ * The `buildPoseidon()` call is async, so we cache the instance.
+ */
+
+let poseidonInstance: any = null;
+
+async function getPoseidon() {
+  if (!poseidonInstance) {
+    const { buildPoseidon } = await import('circomlibjs');
+    poseidonInstance = await buildPoseidon();
+  }
+  return poseidonInstance;
+}
 
 /**
- * Compute a Pedersen-style commitment for a deposit.
- *
- * commitment = Hash(secret || nullifier || amount || tokenMint)
- *
- * In the ZK circuit, this uses Poseidon for field-friendliness.
- * Client-side, we replicate with SHA-256 for non-ZK contexts,
- * and use the circomlibjs Poseidon for proof generation.
+ * Compute commitment = Poseidon(secret, nullifier, amount).
+ * Returns 32-byte big-endian field element matching the circuit.
  */
-export function computeCommitment(
-  secret: Uint8Array,
-  nullifier: Uint8Array,
+export async function computeCommitment(
+  secret: bigint,
+  nullifier: bigint,
   amount: bigint,
-  tokenMint: Uint8Array
-): Uint8Array {
-  const amountBytes = bigintToBytes(amount, 8);
-
-  const input = new Uint8Array(
-    secret.length + nullifier.length + amountBytes.length + tokenMint.length
-  );
-  let offset = 0;
-  input.set(secret, offset); offset += secret.length;
-  input.set(nullifier, offset); offset += nullifier.length;
-  input.set(amountBytes, offset); offset += amountBytes.length;
-  input.set(tokenMint, offset);
-
-  return sha256(input);
+): Promise<Uint8Array> {
+  const poseidon = await getPoseidon();
+  const hash = poseidon([secret, nullifier, amount]);
+  const value = poseidon.F.toObject(hash);
+  return bigintToBytes32BE(value);
 }
 
 /**
- * Compute the nullifier hash.
- *
- * nullifier_hash = Hash(nullifier)
- *
- * Same note as above — in-circuit this is Poseidon, off-circuit this is SHA-256.
+ * Compute nullifier hash = Poseidon(nullifier).
+ * Returns 32-byte big-endian field element matching the circuit.
  */
-export function computeNullifierHash(nullifier: Uint8Array): Uint8Array {
-  return sha256(nullifier);
+export async function computeNullifierHash(nullifier: bigint): Promise<Uint8Array> {
+  const poseidon = await getPoseidon();
+  const hash = poseidon([nullifier]);
+  const value = poseidon.F.toObject(hash);
+  return bigintToBytes32BE(value);
 }
 
-function bigintToBytes(value: bigint, length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  let remaining = value;
-  for (let i = 0; i < length; i++) {
-    bytes[i] = Number(remaining & 0xffn);
-    remaining >>= 8n;
+/**
+ * Convert a bigint to a 32-byte big-endian Uint8Array.
+ */
+function bigintToBytes32BE(value: bigint): Uint8Array {
+  const hex = value.toString(16).padStart(64, '0');
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 }

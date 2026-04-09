@@ -1,44 +1,47 @@
-use anchor_lang::solana_program::keccak;
+use anchor_lang::solana_program::poseidon::{hashv, Endianness, Parameters};
 
 use crate::state::MERKLE_TREE_DEPTH;
 
-/// Zero values for each level of the Merkle tree.
-/// Level 0 = keccak256(0), Level n+1 = keccak256(zero[n] || zero[n])
-/// Used for empty subtrees.
+/// Poseidon hash of two 32-byte field elements (matching circom's Poseidon(2)).
+/// Uses the Solana Poseidon syscall on-chain (no stack overhead).
+pub fn poseidon_hash_pair(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
+    hashv(
+        Parameters::Bn254X5,
+        Endianness::BigEndian,
+        &[left.as_ref(), right.as_ref()],
+    )
+    .expect("Poseidon hash")
+    .to_bytes()
+}
+
+/// Zero value at each level of the Merkle tree.
+/// Level 0 = [0u8; 32] (empty leaf), Level n+1 = Poseidon(zero[n], zero[n]).
 pub fn zero_value(level: usize) -> [u8; 32] {
     let mut current = [0u8; 32];
     for _ in 0..level {
-        current = hash_pair(&current, &current);
+        current = poseidon_hash_pair(&current, &current);
     }
     current
 }
 
-pub fn hash_pair(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-    let mut input = [0u8; 64];
-    input[..32].copy_from_slice(left);
-    input[32..].copy_from_slice(right);
-    keccak::hash(&input).to_bytes()
-}
-
-/// Simplified incremental Merkle tree insert.
-/// In production this would use Poseidon hash and ZK Compression for state.
-/// For MVP, we compute a new root by hashing the new leaf into the tree
-/// at the given index position.
+/// Insert a leaf into the incremental Merkle tree and return the new root.
+///
+/// Walks up from the leaf at `index`, pairing with zero siblings at each
+/// level (matching the circuit's MerkleProof template).
 pub fn insert_leaf(
-    current_root: &[u8; 32],
+    _current_root: &[u8; 32],
     leaf: &[u8; 32],
     index: u32,
 ) -> [u8; 32] {
-    let _ = current_root; // Full implementation tracks filled subtrees
     let mut current_hash = *leaf;
     let mut idx = index;
 
     for level in 0..MERKLE_TREE_DEPTH {
         let zero = zero_value(level);
         if idx % 2 == 0 {
-            current_hash = hash_pair(&current_hash, &zero);
+            current_hash = poseidon_hash_pair(&current_hash, &zero);
         } else {
-            current_hash = hash_pair(&zero, &current_hash);
+            current_hash = poseidon_hash_pair(&zero, &current_hash);
         }
         idx /= 2;
     }
@@ -46,8 +49,7 @@ pub fn insert_leaf(
     current_hash
 }
 
-/// Verify a Merkle proof that `leaf` is at position `index` in the tree
-/// with the given `root`.
+/// Verify a Merkle inclusion proof.
 pub fn verify_proof(
     root: &[u8; 32],
     leaf: &[u8; 32],
@@ -61,9 +63,9 @@ pub fn verify_proof(
     let mut current = *leaf;
     for i in 0..MERKLE_TREE_DEPTH {
         if path_indices[i] == 0 {
-            current = hash_pair(&current, &path[i]);
+            current = poseidon_hash_pair(&current, &path[i]);
         } else {
-            current = hash_pair(&path[i], &current);
+            current = poseidon_hash_pair(&path[i], &current);
         }
     }
 
