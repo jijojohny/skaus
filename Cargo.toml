@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "programs/stealth-pool",
+    "programs/name-registry",
 ]
 resolver = "2"
 

@@ -1,13 +1,23 @@
 import { FastifyInstance } from 'fastify';
+import { Connection } from '@solana/web3.js';
 import { config } from '../config';
+import { resolveUsername, ResolvedName } from '../services/name-resolver';
+
+let connection: Connection;
+
+function getConnection(): Connection {
+  if (!connection) {
+    connection = new Connection(config.solana.rpcUrl, 'confirmed');
+  }
+  return connection;
+}
 
 export async function payLinkRoutes(app: FastifyInstance) {
   /**
    * GET /pay/:username
    *
    * Resolve a pay link to the recipient's stealth meta-address and pool config.
-   * In production, this queries the on-chain name registry (Plan B).
-   * For MVP, we use a simple in-memory mapping.
+   * Queries the on-chain name registry, with mock fallback for localnet.
    */
   app.get<{ Params: { username: string }; Querystring: { amount?: string; token?: string } }>(
     '/:username',
@@ -17,22 +27,31 @@ export async function payLinkRoutes(app: FastifyInstance) {
 
       app.log.info({ username, amount, token }, 'Pay link resolution');
 
-      // MVP: In-memory lookup. Production: on-chain NameRegistry query.
-      const recipient = await resolveUsername(username);
+      const resolved = await resolveUsername(getConnection(), username);
 
-      if (!recipient) {
+      if (!resolved) {
         return reply.status(404).send({ error: 'Username not found' });
+      }
+
+      if (resolved.status !== 'active') {
+        return reply.status(403).send({ error: `Name is ${resolved.status}` });
       }
 
       return reply.send({
         version: 1,
         username,
-        recipientMetaAddress: recipient.metaAddress,
+        recipientMetaAddress: {
+          scanPubkey: resolved.stealthMetaAddress.scanPubkey,
+          spendPubkey: resolved.stealthMetaAddress.spendPubkey,
+          version: resolved.stealthMetaAddress.version,
+        },
         pool: config.solana.stealthPoolProgramId,
         network: config.solana.cluster,
         amount: amount ? BigInt(amount).toString() : null,
         token: token || 'USDC',
         payUrl: `https://skaus.pay/${username}`,
+        profileCid: resolved.profileCid,
+        depositIndex: resolved.depositIndex,
       });
     }
   );
@@ -40,7 +59,7 @@ export async function payLinkRoutes(app: FastifyInstance) {
   /**
    * POST /pay/link
    *
-   * Generate a new pay link with custom parameters.
+   * Generate a pay link with custom parameters.
    */
   app.post<{
     Body: {
@@ -52,11 +71,13 @@ export async function payLinkRoutes(app: FastifyInstance) {
   }>('/link', async (request, reply) => {
     const { username, amount, token, memo } = request.body;
 
+    const resolved = await resolveUsername(getConnection(), username);
+
     const payLink = {
-      url: `https://skaus.pay/${username}${amount ? `?amount=${amount}` : ''}${token ? `&token=${token}` : ''}`,
+      url: buildPayUrl(username, amount, token),
       qrData: JSON.stringify({
         v: 1,
-        recipient_meta_address: 'pending_resolution',
+        recipient_meta_address: resolved?.stealthMetaAddress ?? 'pending_resolution',
         pool: config.solana.stealthPoolProgramId,
         network: config.solana.cluster,
         amount: amount || null,
@@ -69,27 +90,10 @@ export async function payLinkRoutes(app: FastifyInstance) {
   });
 }
 
-interface RecipientRecord {
-  metaAddress: string;
-  scanPubkey: string;
-  spendPubkey: string;
-}
-
-async function resolveUsername(username: string): Promise<RecipientRecord | null> {
-  // MVP placeholder — in production this queries the on-chain NameRegistry program
-  // and fetches the stealth meta-address from the PDA
-  const mockRegistry: Record<string, RecipientRecord> = {
-    alice: {
-      metaAddress: 'mock_stealth_meta_address_alice',
-      scanPubkey: 'mock_scan_pubkey_alice',
-      spendPubkey: 'mock_spend_pubkey_alice',
-    },
-    bob: {
-      metaAddress: 'mock_stealth_meta_address_bob',
-      scanPubkey: 'mock_scan_pubkey_bob',
-      spendPubkey: 'mock_spend_pubkey_bob',
-    },
-  };
-
-  return mockRegistry[username.toLowerCase()] || null;
+function buildPayUrl(username: string, amount?: string, token?: string): string {
+  const params = new URLSearchParams();
+  if (amount) params.set('amount', amount);
+  if (token) params.set('token', token);
+  const qs = params.toString();
+  return `https://skaus.pay/${username}${qs ? `?${qs}` : ''}`;
 }

@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { DEPOSIT_TIERS_USDC, splitIntoTiers } from '@skaus/types';
+import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
+import type { StealthMetaAddress } from '@skaus/crypto';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
+import { resolvePayLink, type PayLinkData } from '@/lib/gateway';
+import { executeDeposit } from '@/lib/deposit';
 
 interface PayPageProps {
   params: { username: string };
@@ -13,38 +16,77 @@ interface PayPageProps {
 
 export default function PayPage({ params }: PayPageProps) {
   const { username } = params;
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
-  const [txStatus, setTxStatus] = useState<'idle' | 'preparing' | 'signing' | 'confirming' | 'done' | 'error'>('idle');
-  const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [txStatus, setTxStatus] = useState<'idle' | 'resolving' | 'preparing' | 'signing' | 'confirming' | 'done' | 'error'>('idle');
+  const [txSignatures, setTxSignatures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [payLinkData, setPayLinkData] = useState<PayLinkData | null>(null);
+  const [progressText, setProgressText] = useState('');
+
+  useEffect(() => {
+    resolvePayLink(username)
+      .then(setPayLinkData)
+      .catch(() => {/* optional: user not registered yet, allow direct deposit */});
+  }, [username]);
 
   const handleDeposit = useCallback(async (amount: bigint, token: string) => {
-    if (!publicKey) return;
+    if (!publicKey || !signTransaction) return;
 
-    setTxStatus('preparing');
+    setTxStatus('resolving');
     setError(null);
 
     try {
-      const tiers = splitIntoTiers(amount, [...DEPOSIT_TIERS_USDC]);
+      const tiers = token === 'USDC'
+        ? splitIntoTiers(amount, [...DEPOSIT_TIERS_USDC])
+        : splitIntoTiers(amount, [...DEPOSIT_TIERS_SOL]);
 
-      setTxStatus('signing');
+      setProgressText(`Splitting into ${tiers.length} tier deposit${tiers.length > 1 ? 's' : ''}`);
 
-      // In production: for each tier, construct a deposit transaction
-      // with commitment, encrypted note, and stealth address derivation.
-      // For MVP demo, we simulate the flow.
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Build a stealth meta-address from the paylink data or use a
+      // self-deposit pattern (deposit to yourself for testing).
+      let recipientMeta: StealthMetaAddress;
+      if (payLinkData && payLinkData.recipientMetaAddress && !payLinkData.recipientMetaAddress.startsWith('mock_')) {
+        const metaBytes = Buffer.from(payLinkData.recipientMetaAddress, 'hex');
+        recipientMeta = {
+          scanPubkey: metaBytes.slice(0, 32),
+          spendPubkey: metaBytes.slice(32, 64),
+          version: 1,
+        };
+      } else {
+        // Self-deposit mode: generate ephemeral keys for testing.
+        // In production, the recipient's meta-address would come from
+        // the gateway pay-link resolution.
+        const { generateStealthKeys } = await import('@skaus/crypto');
+        const keys = generateStealthKeys();
+        recipientMeta = {
+          scanPubkey: keys.scanPubkey,
+          spendPubkey: keys.spendPubkey,
+          version: 1,
+        };
+      }
 
-      setTxStatus('confirming');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const result = await executeDeposit(
+        connection,
+        publicKey,
+        signTransaction,
+        amount,
+        token as 'USDC' | 'SOL',
+        recipientMeta,
+        (step, current, total) => {
+          setTxStatus(step as any);
+          setProgressText(`Tier ${current}/${total}: ${step}`);
+        },
+      );
 
-      setTxSignature('simulated_tx_' + Date.now().toString(36));
+      setTxSignatures(result.signatures);
       setTxStatus('done');
     } catch (err: any) {
+      console.error('Deposit failed:', err);
       setError(err.message || 'Transaction failed');
       setTxStatus('error');
     }
-  }, [publicKey, connection]);
+  }, [publicKey, signTransaction, connection, payLinkData]);
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen px-6">
@@ -58,6 +100,11 @@ export default function PayPage({ params }: PayPageProps) {
             Payment is private — recipient sees the amount, but the link between
             sender and recipient is cryptographically hidden.
           </p>
+          {payLinkData && (
+            <p className="text-xs text-skaus-muted/60">
+              Network: {payLinkData.network} | Pool: {payLinkData.pool.slice(0, 8)}...
+            </p>
+          )}
         </div>
 
         <div className="glass-card p-6 space-y-6">
@@ -76,7 +123,12 @@ export default function PayPage({ params }: PayPageProps) {
               )}
             </>
           ) : (
-            <TransactionStatus status={txStatus} signature={txSignature} />
+            <TransactionStatus
+              status={txStatus === 'resolving' ? 'preparing' : txStatus}
+              signature={txSignatures[0] || null}
+              progressText={progressText}
+              allSignatures={txSignatures}
+            />
           )}
         </div>
 

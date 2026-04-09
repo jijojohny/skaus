@@ -2,4 +2,12 @@ export { StealthKeyPair, generateStealthKeys, deriveStealthAddress, recoverSteal
 export { computeCommitment, computeNullifierHash } from './commitment';
 export { encryptNote, decryptNote } from './encryption';
 export { KeyHierarchy, deriveKeyHierarchy } from './keys';
-export type { StealthMetaAddress, DepositNoteData, ViewingCredential } from './types';
+export {
+  hashName,
+  deriveNameRecordPDA,
+  deriveRegistryConfigPDA,
+  deriveDepositPathPDA,
+  derivePathKeys,
+  validateName,
+} from './name-registry';
+export type { StealthMetaAddress, DepositNoteData, ViewingCredential, WithdrawalProofInput } from './types';

@@ -5,6 +5,10 @@ import { relayRoutes } from './routes/relay';
 import { payLinkRoutes } from './routes/paylink';
 import { healthRoutes } from './routes/health';
 import { indexerRoutes } from './routes/indexer';
+import { nameRoutes } from './routes/names';
+import { requestRoutes } from './routes/requests';
+import { webhookRoutes } from './routes/webhooks';
+import { profileRoutes } from './routes/profiles';
 import { config } from './config';
 
 async function buildServer() {
@@ -31,6 +35,10 @@ async function buildServer() {
   await app.register(relayRoutes, { prefix: '/relay' });
   await app.register(payLinkRoutes, { prefix: '/pay' });
   await app.register(indexerRoutes, { prefix: '/indexer' });
+  await app.register(nameRoutes, { prefix: '/names' });
+  await app.register(requestRoutes, { prefix: '/requests' });
+  await app.register(webhookRoutes, { prefix: '/webhooks' });
+  await app.register(profileRoutes, { prefix: '/profiles' });
 
   return app;
 }

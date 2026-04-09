@@ -10,6 +10,7 @@ export const config = {
     rpcUrl: process.env.SOLANA_RPC_URL || 'http://localhost:8899',
     cluster: (process.env.SOLANA_CLUSTER || 'localnet') as 'mainnet-beta' | 'devnet' | 'localnet',
     stealthPoolProgramId: process.env.STEALTH_POOL_PROGRAM_ID || 'EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq',
+    nameRegistryProgramId: process.env.NAME_REGISTRY_PROGRAM_ID || 'JAmSyEVzHNCTzC6BETuRQdwK1gLQYUFnzwiVKRVYqpdT',
   },
 
   relayer: {

@@ -3,6 +3,8 @@
 interface TransactionStatusProps {
   status: 'preparing' | 'signing' | 'confirming' | 'done' | 'error';
   signature: string | null;
+  progressText?: string;
+  allSignatures?: string[];
 }
 
 const STEPS = [
@@ -12,11 +14,15 @@ const STEPS = [
   { key: 'done', label: 'Complete', description: 'Payment deposited into the stealth pool.' },
 ] as const;
 
-export function TransactionStatus({ status, signature }: TransactionStatusProps) {
+export function TransactionStatus({ status, signature, progressText, allSignatures }: TransactionStatusProps) {
   const currentIndex = STEPS.findIndex(s => s.key === status);
 
   return (
     <div className="space-y-6">
+      {progressText && (
+        <p className="text-xs text-skaus-muted text-center">{progressText}</p>
+      )}
+
       <div className="space-y-4">
         {STEPS.map((step, i) => {
           const isActive = step.key === status;
@@ -52,11 +58,24 @@ export function TransactionStatus({ status, signature }: TransactionStatusProps)
         })}
       </div>
 
-      {status === 'done' && signature && (
+      {status === 'done' && (allSignatures?.length || signature) && (
         <div className="space-y-3">
           <div className="p-3 bg-skaus-success/10 border border-skaus-success/30 rounded-lg">
-            <p className="text-sm text-skaus-success font-medium">Payment sent successfully</p>
-            <p className="text-xs text-skaus-muted mt-1 font-mono break-all">{signature}</p>
+            <p className="text-sm text-skaus-success font-medium">
+              Payment sent successfully
+              {allSignatures && allSignatures.length > 1 && ` (${allSignatures.length} transactions)`}
+            </p>
+            {(allSignatures || [signature]).filter(Boolean).map((sig, i) => (
+              <a
+                key={i}
+                href={`https://explorer.solana.com/tx/${sig}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-skaus-muted mt-1 font-mono break-all block hover:text-skaus-primary transition-colors"
+              >
+                {sig}
+              </a>
+            ))}
           </div>
           <p className="text-xs text-skaus-muted text-center">
             The recipient will detect this deposit via their scan key.

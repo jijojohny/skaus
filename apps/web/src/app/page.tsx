@@ -25,10 +25,16 @@ export default function Home() {
             Try a Payment
           </Link>
           <Link
+            href="/alice"
+            className="px-8 py-3 rounded-xl glass-card text-skaus-text font-semibold hover:bg-skaus-surface transition-all"
+          >
+            View Profile
+          </Link>
+          <Link
             href="/dashboard"
             className="px-8 py-3 rounded-xl glass-card text-skaus-text font-semibold hover:bg-skaus-surface transition-all"
           >
-            Recipient Dashboard
+            Dashboard
           </Link>
         </div>
 
@@ -38,8 +44,8 @@ export default function Home() {
             description="Shared liquidity pool with ZK withdrawals. On-chain observers see pool activity, not your payment graph."
           />
           <FeatureCard
-            title="Universal Links"
-            description="Share a link or QR. Senders use any Solana wallet — no SKAUS install needed."
+            title="Identity & Pay Links"
+            description="Register @name.skaus, share your link-in-bio profile, and receive private payments."
           />
           <FeatureCard
             title="Opt-In Compliance"

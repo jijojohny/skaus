@@ -4,7 +4,7 @@
   "private": true,
   "description": "SKAUS Web App — sender payment UI, recipient dashboard",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 4000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

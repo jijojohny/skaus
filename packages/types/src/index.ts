@@ -66,6 +66,122 @@ export interface PayLinkConfig {
   memoEncrypted: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Plan B — Identity & Discovery types
+// ---------------------------------------------------------------------------
+
+export interface NameRecord {
+  authority: PublicKey;
+  nameHash: Uint8Array;
+  stealthMetaAddress: OnChainStealthMetaAddress;
+  profileCid: Uint8Array | null;
+  depositIndex: bigint;
+  createdAt: bigint;
+  updatedAt: bigint;
+  status: NameStatus;
+  bump: number;
+}
+
+export interface OnChainStealthMetaAddress {
+  scanPubkey: Uint8Array;
+  spendPubkey: Uint8Array;
+  version: number;
+}
+
+export type NameStatus = 'active' | 'suspended' | 'expired';
+
+export interface DepositPathRecord {
+  nameRecord: PublicKey;
+  pathIndex: bigint;
+  label: string;
+  createdAt: bigint;
+  bump: number;
+}
+
+export interface CompressedProfile {
+  displayName: string;
+  bio: string;
+  avatarUri: string;
+  links: ProfileLink[];
+  paymentConfig: PaymentConfig;
+  tiers: PaymentTier[];
+  gatedContent: GatedContentPointer[];
+  version: number;
+  updatedAt: number;
+}
+
+export interface ProfileLink {
+  platform: string;
+  url: string;
+  verified: boolean;
+}
+
+export interface PaymentConfig {
+  acceptedTokens: string[];
+  suggestedAmounts: number[];
+  customAmountEnabled: boolean;
+  thankYouMessage: string;
+}
+
+export interface PaymentTier {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  benefits: string[];
+  gateType: 'one-time' | 'recurring-hint';
+}
+
+export interface GatedContentPointer {
+  contentId: string;
+  encryptedUri: string;
+  accessCondition: string;
+  previewText: string;
+}
+
+export interface PaymentRequest {
+  id: string;
+  creator: string;
+  amount: number;
+  token: string;
+  memo: string;
+  expiresAt: number | null;
+  maxPayments: number;
+  depositPathIndex: bigint;
+  status: PaymentRequestStatus;
+  payments: PaymentRecord[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PaymentRequestStatus = 'pending' | 'partial' | 'paid' | 'expired' | 'cancelled';
+
+export interface PaymentRecord {
+  txSignature: string;
+  amount: number;
+  paidAt: number;
+  depositorHint?: string;
+}
+
+export interface ProfileSearchParams {
+  query: string;
+  tags?: string[];
+  sortBy?: 'relevance' | 'created' | 'popularity';
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProfileSearchResult {
+  name: string;
+  displayName: string;
+  bio: string;
+  avatarUri: string;
+}
+
+// ---------------------------------------------------------------------------
+// Plan A — Core Payment Rail constants
+// ---------------------------------------------------------------------------
+
 export const USDC_MINT_DEVNET = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 export const USDC_MINT_MAINNET = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 

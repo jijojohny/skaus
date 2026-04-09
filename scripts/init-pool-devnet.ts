@@ -99,10 +99,10 @@ async function main() {
   }
 
   // Build initialize instruction
-  // Anchor discriminator for "initialize": first 8 bytes of sha256("global:initialize")
+  // Anchor discriminator: first 8 bytes of sha256("global:<fn_name>")
   const { createHash } = await import('crypto');
   const discriminator = createHash('sha256')
-    .update('global:initialize')
+    .update('global:initialize_pool')
     .digest()
     .slice(0, 8);
 

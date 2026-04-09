@@ -12,9 +12,11 @@ stealth_pool = ["devnet-mock"]
 
 [programs.localnet]
 stealth_pool = "EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq"
+name_registry = "JAmSyEVzHNCTzC6BETuRQdwK1gLQYUFnzwiVKRVYqpdT"
 
 [programs.devnet]
 stealth_pool = "EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq"
+name_registry = "JAmSyEVzHNCTzC6BETuRQdwK1gLQYUFnzwiVKRVYqpdT"
 
 [registry]
 url = "https://api.apr.dev"
