@@ -1,0 +1,21 @@
+{
+  "name": "@skaus/crypto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cryptographic primitives for SKAUS: stealth addresses, commitments, key derivation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "ts-mocha -p tsconfig.json src/**/*.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

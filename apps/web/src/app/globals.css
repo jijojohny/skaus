@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --skaus-primary: #6366f1;
+  --skaus-secondary: #8b5cf6;
+}
+
+body {
+  @apply bg-skaus-dark text-skaus-text antialiased;
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-gradient-to-r from-skaus-primary to-skaus-secondary bg-clip-text text-transparent;
+  }
+
+  .glass-card {
+    @apply bg-skaus-surface/80 backdrop-blur-xl border border-skaus-border rounded-2xl;
+  }
+}

@@ -1,0 +1,29 @@
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY packages/ packages/
+COPY apps/gateway/ apps/gateway/
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @skaus/types build
+RUN pnpm --filter @skaus/crypto build
+RUN pnpm --filter @skaus/gateway build
+
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
+COPY --from=builder /app/packages/ packages/
+COPY --from=builder /app/apps/gateway/dist apps/gateway/dist
+COPY --from=builder /app/apps/gateway/package.json apps/gateway/
+
+RUN pnpm install --frozen-lockfile --prod
+
+EXPOSE 3001
+
+CMD ["node", "apps/gateway/dist/server.js"]

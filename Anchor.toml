@@ -1,0 +1,27 @@
+[features]
+resolution = true
+skip-lint = false
+
+# devnet-mock is enabled for localnet testing only.
+# Mainnet builds MUST NOT include this feature — proofs are accepted unconditionally.
+[features.localnet]
+stealth_pool = ["devnet-mock"]
+
+[features.devnet]
+stealth_pool = ["devnet-mock"]
+
+[programs.localnet]
+stealth_pool = "EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq"
+
+[programs.devnet]
+stealth_pool = "EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "NODE_OPTIONS='--import tsx' npx mocha --timeout 60000 tests/**/*.ts"

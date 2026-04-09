@@ -1,0 +1,36 @@
+{
+  "name": "skaus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-preserving payment infrastructure on Solana",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "dev:gateway": "pnpm --filter @skaus/gateway dev",
+    "dev:web": "pnpm --filter @skaus/web dev",
+    "build:circuits": "pnpm --filter @skaus/circuits build",
+    "test:programs": "anchor test",
+    "build:programs": "anchor build"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "ts-node": "^10.9.2"
+    }
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "chai": "^4.5.0",
+    "mocha": "^11.7.5",
+    "ts-mocha": "^10.1.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^5.9.3"
+  }
+}
