@@ -1,73 +1,101 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey } from '@solana/web3.js';
 import { fetchDeposits, getRelayStatus } from '@/lib/gateway';
+import { scanForDeposits, scanDepositsOnChain, type ScannedDeposit } from '@/lib/scan';
 import { executeWithdraw } from '@/lib/withdraw';
 import { config } from '@/lib/config';
 import { derivePoolPda } from '@/lib/stealth';
 
-interface DepositEntry {
-  id: string;
-  commitment: string;
-  leafIndex: number;
-  amount: string;
-  token: string;
-  timestamp: number;
-  txSignature: string;
-  encryptedNote: string;
-  status: 'available' | 'withdrawing' | 'withdrawn' | 'error';
-  withdrawTx?: string;
-  withdrawError?: string;
-}
-
 export default function DashboardPage() {
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signMessage } = useWallet();
   const { connection } = useConnection();
-  const [deposits, setDeposits] = useState<DepositEntry[]>([]);
+  type DashboardDeposit = Omit<ScannedDeposit, 'status'> & {
+    status: 'available' | 'withdrawing' | 'withdrawn' | 'error';
+    withdrawTx?: string;
+    withdrawError?: string;
+  };
+  const [deposits, setDeposits] = useState<DashboardDeposit[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [relayActive, setRelayActive] = useState<boolean | null>(null);
   const [withdrawAddress, setWithdrawAddress] = useState('');
   const [showWithdrawModal, setShowWithdrawModal] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<'indexer' | 'onchain'>('indexer');
+
+  const scanKeyRef = useRef<Uint8Array | null>(null);
+
+  const deriveScanKey = useCallback(async (): Promise<Uint8Array> => {
+    if (scanKeyRef.current) return scanKeyRef.current;
+
+    if (!signMessage) {
+      throw new Error(
+        'Your wallet does not support message signing. ' +
+        'This is required to derive your scan key for detecting deposits.'
+      );
+    }
+
+    const message = new TextEncoder().encode(
+      'SKAUS: Derive stealth scan key\n' +
+      `Wallet: ${publicKey!.toBase58()}`
+    );
+    const signature = await signMessage(message);
+
+    const { sha256 } = await import('@noble/hashes/sha256');
+    const { hkdf } = await import('@noble/hashes/hkdf');
+    const masterSeed = sha256(signature);
+    const scanPrivkey = hkdf(sha256, masterSeed, 'skaus-v1', 'skaus-scan-key', 32);
+
+    scanKeyRef.current = scanPrivkey;
+    return scanPrivkey;
+  }, [signMessage, publicKey]);
 
   const scanDeposits = useCallback(async () => {
     setScanning(true);
     setScanError(null);
 
     try {
-      const [indexed, relayStatus] = await Promise.all([
-        fetchDeposits(),
-        getRelayStatus().catch(() => null),
-      ]);
+      const scanPrivkey = await deriveScanKey();
 
+      const relayStatus = await getRelayStatus().catch(() => null);
       setRelayActive(relayStatus?.active ?? null);
 
-      const entries: DepositEntry[] = indexed.map((dep) => ({
-        id: dep.commitment,
-        commitment: dep.commitment,
-        leafIndex: dep.leafIndex,
-        amount: dep.amount,
-        token: 'USDC',
-        timestamp: dep.timestamp * 1000,
-        txSignature: dep.txSignature,
-        encryptedNote: dep.encryptedNote,
+      let found: ScannedDeposit[];
+
+      if (scanMode === 'onchain') {
+        const tokenMint = new PublicKey(config.tokenMint);
+        const [poolPda] = derivePoolPda(tokenMint);
+        found = await scanDepositsOnChain(connection, scanPrivkey, poolPda);
+      } else {
+        found = await scanForDeposits(scanPrivkey);
+      }
+
+      const entries = found.map(dep => ({
+        ...dep,
         status: 'available' as const,
       }));
 
       setDeposits(entries);
 
       if (entries.length === 0) {
-        setScanError('No deposits found in the pool yet. Make a deposit first via the Pay page.');
+        setScanError(
+          'No deposits found for your wallet. ' +
+          'Make sure someone has sent you a payment first.'
+        );
       }
     } catch (err: any) {
-      setScanError(err.message || 'Failed to scan deposits. Is the gateway running?');
+      if (err.message?.includes('User rejected')) {
+        setScanError('Signature required to derive your scan key. Please approve the message signing request.');
+      } else {
+        setScanError(err.message || 'Failed to scan deposits. Is the gateway running?');
+      }
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [deriveScanKey, scanMode, connection]);
 
   const handleWithdraw = useCallback(async (depositId: string) => {
     if (!withdrawAddress) return;
@@ -95,33 +123,13 @@ export default function DashboardPage() {
 
       const poolAccount = await connection.getAccountInfo(poolPda);
       let merkleRoot = '0'.repeat(64);
-      if (poolAccount && poolAccount.data.length >= 151) {
-        // merkle_root offset: disc(8) + authority(32) + token_mint(32) + fee_bps(2) +
-        // min_deposit(8) + max_deposit(8) + total_deposits(8) + total_withdrawals(8) +
-        // deposit_count(8) + withdrawal_count(8) + current_merkle_index(4) + paused(1)
-        // = 127
+      if (poolAccount && poolAccount.data.length >= 159) {
         merkleRoot = Buffer.from(poolAccount.data.slice(127, 159)).toString('hex');
       }
 
       const deposit = deposits.find(d => d.id === depositId)!;
       const result = await executeWithdraw(
-        {
-          id: deposit.id,
-          commitment: deposit.commitment,
-          leafIndex: deposit.leafIndex,
-          amount: BigInt(deposit.amount || '0'),
-          token: deposit.token,
-          timestamp: deposit.timestamp,
-          txSignature: deposit.txSignature,
-          noteData: {
-            secret: 0n,
-            nullifier: BigInt('0x' + deposit.commitment.slice(0, 16)),
-            amount: BigInt(deposit.amount || '0'),
-            tokenMint: config.tokenMint,
-            ephemeralPubkey: new Uint8Array(32),
-          },
-          status: 'available',
-        },
+        { ...deposit, status: 'available' as const },
         withdrawAddress,
         merkleRoot,
       );
@@ -142,6 +150,14 @@ export default function DashboardPage() {
       );
     }
   }, [withdrawAddress, deposits, connection]);
+
+  const formatAmount = (amount: bigint) => {
+    const decimals = 6;
+    const str = amount.toString().padStart(decimals + 1, '0');
+    const whole = str.slice(0, str.length - decimals);
+    const frac = str.slice(str.length - decimals).replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : whole;
+  };
 
   if (!connected) {
     return (
@@ -176,6 +192,14 @@ export default function DashboardPage() {
               Relay {relayActive ? 'Active' : 'Offline'}
             </span>
           )}
+          <select
+            value={scanMode}
+            onChange={(e) => setScanMode(e.target.value as 'indexer' | 'onchain')}
+            className="px-3 py-2 rounded-lg bg-skaus-dark border border-skaus-border text-xs text-white"
+          >
+            <option value="indexer">Via Indexer</option>
+            <option value="onchain">On-chain</option>
+          </select>
           <button
             onClick={scanDeposits}
             disabled={scanning}
@@ -212,11 +236,14 @@ export default function DashboardPage() {
               <div key={deposit.id} className="px-6 py-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <p className="font-medium font-mono text-sm">
+                    <p className="font-medium text-sm">
+                      {formatAmount(deposit.amount)} {deposit.token}
+                    </p>
+                    <p className="text-xs text-skaus-muted font-mono">
                       {deposit.commitment.slice(0, 16)}...
                     </p>
                     <p className="text-xs text-skaus-muted">
-                      {new Date(deposit.timestamp).toLocaleString()} | Leaf #{deposit.leafIndex}
+                      {new Date(deposit.timestamp * 1000).toLocaleString()} | Leaf #{deposit.leafIndex}
                     </p>
                     {deposit.txSignature && (
                       <a

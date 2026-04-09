@@ -9,7 +9,9 @@ import {
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 import bs58 from 'bs58';
 
@@ -108,7 +110,22 @@ export class RelayService {
         data: instructionData,
       });
 
-      const transaction = new Transaction().add(instruction);
+      const transaction = new Transaction();
+
+      const recipientAta = await getAssociatedTokenAddress(tokenMint, recipient, true);
+      const recipientAtaInfo = await this.connection.getAccountInfo(recipientAta);
+      if (!recipientAtaInfo) {
+        transaction.add(
+          createAssociatedTokenAccountInstruction(
+            this.relayerKeypair.publicKey,
+            recipientAta,
+            recipient,
+            tokenMint,
+          )
+        );
+      }
+
+      transaction.add(instruction);
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,

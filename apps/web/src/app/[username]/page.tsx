@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { lookupName, type NameLookupResult } from '@/lib/gateway';
+import { lookupName, fetchProfile, type NameLookupResult } from '@/lib/gateway';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
 import { executeDeposit } from '@/lib/deposit';
+import { decodePubkey, isMockPubkey } from '@/lib/keys';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 import type { CompressedProfile } from '@skaus/types';
@@ -15,7 +16,9 @@ interface ProfilePageProps {
   params: { username: string };
 }
 
-const MOCK_PROFILES: Record<string, CompressedProfile> = {
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+const DEMO_PROFILES: Record<string, CompressedProfile> = {
   alice: {
     displayName: 'Alice Creator',
     bio: 'Building cool stuff on Solana',
@@ -80,6 +83,8 @@ const MOCK_PROFILES: Record<string, CompressedProfile> = {
   },
 };
 
+const MOCK_PROFILES: Record<string, CompressedProfile> = DEMO_MODE ? DEMO_PROFILES : {};
+
 export default function ProfilePage({ params }: ProfilePageProps) {
   const { username } = params;
   const { connected, publicKey, signTransaction } = useWallet();
@@ -100,18 +105,29 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   useEffect(() => {
     async function load() {
       try {
-        const data = await lookupName(username);
-        if (data.available) {
-          setNotFound(true);
-        } else {
+        const [data, gatewayProfile] = await Promise.all([
+          lookupName(username).catch(() => null),
+          fetchProfile(username).catch(() => null),
+        ]);
+
+        if (data && !data.available) {
           setNameData(data);
-          const profileData = MOCK_PROFILES[username.toLowerCase()] || buildDefaultProfile(username);
-          setProfile(profileData);
+        }
+
+        if (gatewayProfile) {
+          setProfile(gatewayProfile);
+        } else {
+          const fallback = MOCK_PROFILES[username.toLowerCase()] || buildDefaultProfile(username);
+          setProfile(fallback);
+        }
+
+        if (!data?.available === false && !gatewayProfile && !MOCK_PROFILES[username.toLowerCase()]) {
+          setNotFound(true);
         }
       } catch {
-        const profileData = MOCK_PROFILES[username.toLowerCase()];
-        if (profileData) {
-          setProfile(profileData);
+        const fallback = MOCK_PROFILES[username.toLowerCase()];
+        if (fallback) {
+          setProfile(fallback);
         } else {
           setNotFound(true);
         }
@@ -136,10 +152,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       setProgressText(`Splitting into ${tiers.length} deposit${tiers.length > 1 ? 's' : ''}`);
 
       let recipientMeta: StealthMetaAddress;
-      if (nameData?.stealthMetaAddress && !nameData.stealthMetaAddress.scanPubkey.startsWith('mock_')) {
-        const scanBytes = Buffer.from(nameData.stealthMetaAddress.scanPubkey, 'hex');
-        const spendBytes = Buffer.from(nameData.stealthMetaAddress.spendPubkey, 'hex');
-        recipientMeta = { scanPubkey: scanBytes, spendPubkey: spendBytes, version: 1 };
+      const meta = nameData?.stealthMetaAddress;
+      if (meta && !isMockPubkey(meta.scanPubkey) && !isMockPubkey(meta.spendPubkey)) {
+        recipientMeta = {
+          scanPubkey: decodePubkey(meta.scanPubkey),
+          spendPubkey: decodePubkey(meta.spendPubkey),
+          version: meta.version || 1,
+        };
       } else {
         const { generateStealthKeys } = await import('@skaus/crypto');
         const keys = generateStealthKeys();

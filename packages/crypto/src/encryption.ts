@@ -1,9 +1,11 @@
+import { x25519 } from '@noble/curves/ed25519';
 import { randomBytes } from '@noble/hashes/utils';
 import { sha256 } from '@noble/hashes/sha256';
 import type { DepositNoteData } from './types';
 
 const NONCE_LENGTH = 12;
 const TAG_LENGTH = 16;
+const EPHEMERAL_PK_LENGTH = 32;
 
 /**
  * Encrypt a deposit note for the recipient using a shared secret derived via ECDH.
@@ -11,7 +13,10 @@ const TAG_LENGTH = 16;
  * Scheme: SHA-256–based stream cipher (CTR mode) + SHA-256 MAC.
  *   - Key: SHA-256(sharedSecret || "skaus_note_key")
  *   - Nonce: random 12 bytes
- *   - Output: nonce(12) || ciphertext(n) || tag(16)
+ *   - Output: ephemeralPubkey(32) || nonce(12) || ciphertext(n) || tag(16)
+ *
+ * The ephemeral pubkey is prepended unencrypted so the recipient can compute
+ * the shared secret via ECDH without needing anything other than their scan privkey.
  */
 export function encryptNote(
   noteData: DepositNoteData,
@@ -24,26 +29,45 @@ export function encryptNote(
   const ciphertext = xorCipher(plaintext, key, nonce);
   const tag = computeTag(key, nonce, ciphertext);
 
-  const result = new Uint8Array(NONCE_LENGTH + ciphertext.length + TAG_LENGTH);
-  result.set(nonce, 0);
-  result.set(ciphertext, NONCE_LENGTH);
-  result.set(tag, NONCE_LENGTH + ciphertext.length);
+  const result = new Uint8Array(
+    EPHEMERAL_PK_LENGTH + NONCE_LENGTH + ciphertext.length + TAG_LENGTH
+  );
+  result.set(noteData.ephemeralPubkey, 0);
+  result.set(nonce, EPHEMERAL_PK_LENGTH);
+  result.set(ciphertext, EPHEMERAL_PK_LENGTH + NONCE_LENGTH);
+  result.set(tag, EPHEMERAL_PK_LENGTH + NONCE_LENGTH + ciphertext.length);
   return result;
 }
 
 /**
- * Decrypt a deposit note using the shared secret.
+ * Decrypt a deposit note using the recipient's scan private key.
  *
- * Input format: nonce(12) || ciphertext || tag(16)
+ * Input format: ephemeralPubkey(32) || nonce(12) || ciphertext || tag(16)
+ *
+ * Steps:
+ *   1. Extract ephemeral pubkey from the first 32 bytes
+ *   2. Compute sharedSecret = x25519(scanPrivkey, ephemeralPubkey)
+ *   3. Derive encryption key and decrypt
+ *
+ * Throws on MAC mismatch (the deposit doesn't belong to us).
  */
 export function decryptNote(
   encrypted: Uint8Array,
-  sharedSecret: Uint8Array
+  scanPrivkey: Uint8Array
 ): DepositNoteData {
+  if (encrypted.length < EPHEMERAL_PK_LENGTH + NONCE_LENGTH + TAG_LENGTH + 1) {
+    throw new Error('Encrypted note too short');
+  }
+
+  const ephemeralPubkey = encrypted.slice(0, EPHEMERAL_PK_LENGTH);
+  const rest = encrypted.slice(EPHEMERAL_PK_LENGTH);
+
+  const sharedSecret = x25519.getSharedSecret(scanPrivkey, ephemeralPubkey);
+
   const key = deriveNoteKey(sharedSecret);
-  const nonce = encrypted.slice(0, NONCE_LENGTH);
-  const ciphertext = encrypted.slice(NONCE_LENGTH, encrypted.length - TAG_LENGTH);
-  const tag = encrypted.slice(encrypted.length - TAG_LENGTH);
+  const nonce = rest.slice(0, NONCE_LENGTH);
+  const ciphertext = rest.slice(NONCE_LENGTH, rest.length - TAG_LENGTH);
+  const tag = rest.slice(rest.length - TAG_LENGTH);
 
   const expectedTag = computeTag(key, nonce, ciphertext);
   if (!constantTimeEqual(tag, expectedTag)) {

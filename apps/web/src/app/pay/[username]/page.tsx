@@ -43,20 +43,17 @@ export default function PayPage({ params }: PayPageProps) {
 
       setProgressText(`Splitting into ${tiers.length} tier deposit${tiers.length > 1 ? 's' : ''}`);
 
-      // Build a stealth meta-address from the paylink data or use a
-      // self-deposit pattern (deposit to yourself for testing).
+      const { decodePubkey, isMockPubkey } = await import('@/lib/keys');
+
       let recipientMeta: StealthMetaAddress;
-      if (payLinkData && payLinkData.recipientMetaAddress && !payLinkData.recipientMetaAddress.startsWith('mock_')) {
-        const metaBytes = Buffer.from(payLinkData.recipientMetaAddress, 'hex');
+      const meta = payLinkData?.recipientMetaAddress;
+      if (meta && !isMockPubkey(meta.scanPubkey) && !isMockPubkey(meta.spendPubkey)) {
         recipientMeta = {
-          scanPubkey: metaBytes.slice(0, 32),
-          spendPubkey: metaBytes.slice(32, 64),
-          version: 1,
+          scanPubkey: decodePubkey(meta.scanPubkey),
+          spendPubkey: decodePubkey(meta.spendPubkey),
+          version: meta.version || 1,
         };
       } else {
-        // Self-deposit mode: generate ephemeral keys for testing.
-        // In production, the recipient's meta-address would come from
-        // the gateway pay-link resolution.
         const { generateStealthKeys } = await import('@skaus/crypto');
         const keys = generateStealthKeys();
         recipientMeta = {

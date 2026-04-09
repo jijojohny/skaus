@@ -3,11 +3,17 @@ import { config } from './config';
 export interface PayLinkData {
   version: number;
   username: string;
-  recipientMetaAddress: string;
+  recipientMetaAddress: {
+    scanPubkey: string;
+    spendPubkey: string;
+    version: number;
+  };
   pool: string;
   network: string;
   amount: string | null;
   token: string;
+  profileCid?: string | null;
+  depositIndex?: number;
 }
 
 export interface IndexedDeposit {

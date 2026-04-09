@@ -3,9 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { getPaymentRequest, type PaymentRequestData } from '@/lib/gateway';
+import {
+  getPaymentRequest,
+  lookupName,
+  type PaymentRequestData,
+} from '@/lib/gateway';
 import { executeDeposit } from '@/lib/deposit';
 import { TransactionStatus } from '@/components/TransactionStatus';
+import { decodePubkey, isMockPubkey } from '@/lib/keys';
+import { config } from '@/lib/config';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 
@@ -48,13 +54,25 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
       setProgressText(`Splitting into ${tiers.length} deposit${tiers.length > 1 ? 's' : ''}`);
 
-      const { generateStealthKeys } = await import('@skaus/crypto');
-      const keys = generateStealthKeys();
-      const recipientMeta: StealthMetaAddress = {
-        scanPubkey: keys.scanPubkey,
-        spendPubkey: keys.spendPubkey,
-        version: 1,
-      };
+      let recipientMeta: StealthMetaAddress;
+
+      const nameData = await lookupName(username).catch(() => null);
+      const meta = nameData?.stealthMetaAddress;
+      if (meta && !isMockPubkey(meta.scanPubkey) && !isMockPubkey(meta.spendPubkey)) {
+        recipientMeta = {
+          scanPubkey: decodePubkey(meta.scanPubkey),
+          spendPubkey: decodePubkey(meta.spendPubkey),
+          version: meta.version || 1,
+        };
+      } else {
+        const { generateStealthKeys } = await import('@skaus/crypto');
+        const keys = generateStealthKeys();
+        recipientMeta = {
+          scanPubkey: keys.scanPubkey,
+          spendPubkey: keys.spendPubkey,
+          version: 1,
+        };
+      }
 
       const result = await executeDeposit(
         connection,
@@ -69,13 +87,26 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
         },
       );
 
+      try {
+        await fetch(`${config.gatewayUrl}/requests/${requestId}/payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            txSignature: result.signatures[0],
+            amount: request.amount,
+          }),
+        });
+      } catch {
+        // Non-critical: payment is on-chain regardless
+      }
+
       setTxSignatures(result.signatures);
       setTxStatus('done');
     } catch (err: any) {
       setError(err.message || 'Payment failed');
       setTxStatus('error');
     }
-  }, [publicKey, signTransaction, connection, request]);
+  }, [publicKey, signTransaction, connection, request, username, requestId]);
 
   if (loading) {
     return (
@@ -115,7 +146,6 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
         </div>
 
         <div className="glass-card p-6 space-y-5">
-          {/* Amount */}
           <div className="text-center">
             <p className="text-4xl font-bold text-white">
               {request.token === 'SOL' ? '◎' : '$'}{request.amount}
@@ -123,7 +153,6 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
             <p className="text-sm text-skaus-muted mt-1">{request.token}</p>
           </div>
 
-          {/* Memo */}
           {request.memo && (
             <div className="p-3 bg-skaus-dark rounded-lg">
               <p className="text-xs text-skaus-muted uppercase mb-1">Memo</p>
@@ -131,12 +160,10 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
             </div>
           )}
 
-          {/* Status Badge */}
           <div className="flex justify-center">
             <StatusBadge status={request.status} />
           </div>
 
-          {/* Expiry */}
           {request.expiresAt && (
             <p className="text-xs text-skaus-muted text-center">
               {isExpired
@@ -145,7 +172,6 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
             </p>
           )}
 
-          {/* Payment Action */}
           {canPay && (
             <>
               {!connected ? (

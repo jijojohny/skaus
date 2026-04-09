@@ -73,11 +73,15 @@ export async function payLinkRoutes(app: FastifyInstance) {
 
     const resolved = await resolveUsername(getConnection(), username);
 
+    if (!resolved) {
+      return reply.status(404).send({ error: 'Username not registered' });
+    }
+
     const payLink = {
       url: buildPayUrl(username, amount, token),
       qrData: JSON.stringify({
         v: 1,
-        recipient_meta_address: resolved?.stealthMetaAddress ?? 'pending_resolution',
+        recipient_meta_address: resolved.stealthMetaAddress,
         pool: config.solana.stealthPoolProgramId,
         network: config.solana.cluster,
         amount: amount || null,

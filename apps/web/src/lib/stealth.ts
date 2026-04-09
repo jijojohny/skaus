@@ -6,8 +6,9 @@ import {
   SystemProgram,
 } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
+import { config } from './config';
 
-const STEALTH_POOL_PROGRAM_ID = new PublicKey('EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq');
+const STEALTH_POOL_PROGRAM_ID = new PublicKey(config.programId);
 
 /**
  * Derive the pool PDA for a given token mint.
@@ -125,20 +126,3 @@ export async function buildDepositTransaction(
   return transaction;
 }
 
-/**
- * Resolve a SKAUS pay link to the recipient's stealth meta-address.
- */
-export async function resolvePayLink(
-  username: string,
-  gatewayUrl: string = 'http://localhost:3001'
-): Promise<{
-  recipientMetaAddress: string;
-  pool: string;
-  network: string;
-}> {
-  const response = await fetch(`${gatewayUrl}/pay/${username}`);
-  if (!response.ok) {
-    throw new Error(`Failed to resolve pay link: ${response.statusText}`);
-  }
-  return response.json();
-}
