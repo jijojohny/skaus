@@ -18,4 +18,7 @@ export const config = {
     feeBps: parseInt(process.env.RELAYER_FEE_BPS || '10', 10),
     maxPendingTxs: parseInt(process.env.MAX_PENDING_TXS || '50', 10),
   },
+
+  /** Used to build absolute pay links returned from POST /requests */
+  webAppPublicUrl: (process.env.WEB_APP_PUBLIC_URL || 'http://localhost:4000').replace(/\/$/, ''),
 } as const;

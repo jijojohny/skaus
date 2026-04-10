@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 interface DepositFormProps {
   onSubmit: (amount: bigint, token: string) => Promise<void>;
+  defaultToken?: 'USDC' | 'SOL';
 }
 
 const QUICK_AMOUNTS = [
@@ -13,9 +14,9 @@ const QUICK_AMOUNTS = [
   { label: '$500', value: 500_000_000n },
 ];
 
-export function DepositForm({ onSubmit }: DepositFormProps) {
+export function DepositForm({ onSubmit, defaultToken = 'USDC' }: DepositFormProps) {
   const [amount, setAmount] = useState('');
-  const [token, setToken] = useState<'USDC' | 'SOL'>('USDC');
+  const [token, setToken] = useState<'USDC' | 'SOL'>(defaultToken);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {

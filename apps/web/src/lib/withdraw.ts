@@ -18,10 +18,11 @@ export interface WithdrawResult {
 async function getPoolFeeBps(): Promise<bigint> {
   try {
     const { Connection } = await import('@solana/web3.js');
-    const connection = new Connection(
-      process.env.NEXT_PUBLIC_RPC_URL || `https://api.devnet.solana.com`,
-      'confirmed'
-    );
+    const rpc =
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+      process.env.NEXT_PUBLIC_RPC_URL ||
+      'https://api.devnet.solana.com';
+    const connection = new Connection(rpc, 'confirmed');
     const { derivePoolPda } = await import('./stealth');
     const tokenMint = new PublicKey(config.tokenMint);
     const [poolPda] = derivePoolPda(tokenMint);

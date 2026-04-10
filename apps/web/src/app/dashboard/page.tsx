@@ -8,9 +8,11 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { fetchDeposits, getRelayStatus, lookupByAuthority } from '@/lib/gateway';
 import { scanForDeposits, scanDepositsOnChain, type ScannedDeposit } from '@/lib/scan';
 import { executeWithdraw } from '@/lib/withdraw';
-import { config } from '@/lib/config';
+import { config, getPublicProfileUrl } from '@/lib/config';
 import { derivePoolPda } from '@/lib/stealth';
 import Link from 'next/link';
+import QRCode from 'react-qr-code';
+import { DashboardShell } from '@/components/DashboardShell';
 
 type DashboardDeposit = Omit<ScannedDeposit, 'status'> & {
   status: 'available' | 'withdrawing' | 'withdrawn' | 'error';
@@ -19,11 +21,10 @@ type DashboardDeposit = Omit<ScannedDeposit, 'status'> & {
 };
 
 type ActivityFilter = 'all' | 'incoming' | 'outgoing';
-type SidebarTab = 'dashboard' | 'links' | 'activities' | 'settings';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { ready, authenticated, user, logout } = usePrivy();
+  const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
   const { signMessage } = useSignMessage();
 
@@ -38,22 +39,23 @@ export default function DashboardPage() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [relayActive, setRelayActive] = useState<boolean | null>(null);
   const [withdrawAddress, setWithdrawAddress] = useState('');
-  const [showWithdrawModal, setShowWithdrawModal] = useState<string | null>(null);
+  /** When non-null, withdraw modal is open for these deposit ids (length 1 = single, 2+ = bulk). */
+  const [withdrawModalIds, setWithdrawModalIds] = useState<string[] | null>(null);
+  const [withdrawRunning, setWithdrawRunning] = useState(false);
+  const [withdrawProgress, setWithdrawProgress] = useState({ current: 0, total: 0 });
+  const [selectedDepositIds, setSelectedDepositIds] = useState<Set<string>>(() => new Set());
   const [scanMode, setScanMode] = useState<'indexer' | 'onchain'>('indexer');
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
-  const [activeTab, setActiveTab] = useState<SidebarTab>('dashboard');
   const [registeredName, setRegisteredName] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   const scanKeyRef = useRef<Uint8Array | null>(null);
+  const depositsRef = useRef<DashboardDeposit[]>([]);
+  depositsRef.current = deposits;
 
   useEffect(() => {
-    if (!ready) return;
-    if (!authenticated) {
-      router.push('/login?redirect=/dashboard');
-      return;
-    }
+    if (!ready || !authenticated) return;
     if (walletAddress) {
       lookupByAuthority(walletAddress)
         .then((result) => {
@@ -76,6 +78,15 @@ export default function DashboardPage() {
       }
     }
   }, [ready, authenticated, walletAddress, router]);
+
+  useEffect(() => {
+    if (!showQrModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowQrModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showQrModal]);
 
   const verifyNameFromGateway = async (address: string) => {
     try {
@@ -153,59 +164,99 @@ export default function DashboardPage() {
     }
   }, [deriveScanKey, scanMode, connection]);
 
-  const handleWithdraw = useCallback(async (depositId: string) => {
-    if (!withdrawAddress) return;
+  const fetchMerkleRootHex = useCallback(async (): Promise<string> => {
+    const tokenMint = new PublicKey(config.tokenMint);
+    const [poolPda] = derivePoolPda(tokenMint);
+    const poolAccount = await connection.getAccountInfo(poolPda);
+    if (poolAccount && poolAccount.data.length >= 159) {
+      return Buffer.from(poolAccount.data.slice(127, 159)).toString('hex');
+    }
+    return '0'.repeat(64);
+  }, [connection]);
+
+  const [withdrawAddressError, setWithdrawAddressError] = useState<string | null>(null);
+
+  const confirmWithdraw = useCallback(async () => {
+    if (!withdrawModalIds?.length || !withdrawAddress.trim()) return;
 
     try {
-      new PublicKey(withdrawAddress);
+      new PublicKey(withdrawAddress.trim());
     } catch {
-      setDeposits(prev =>
-        prev.map(d => d.id === depositId
-          ? { ...d, status: 'error' as const, withdrawError: 'Invalid Solana address' }
-          : d
-        )
-      );
+      setWithdrawAddressError('Invalid Solana address');
+      return;
+    }
+    setWithdrawAddressError(null);
+
+    const ids = withdrawModalIds.filter(id => {
+      const d = depositsRef.current.find(x => x.id === id);
+      return d?.status === 'available';
+    });
+    if (ids.length === 0) {
+      setWithdrawModalIds(null);
       return;
     }
 
-    setDeposits(prev =>
-      prev.map(d => d.id === depositId ? { ...d, status: 'withdrawing' as const } : d)
-    );
-    setShowWithdrawModal(null);
+    setWithdrawRunning(true);
+    setWithdrawProgress({ current: 0, total: ids.length });
 
-    try {
-      const tokenMint = new PublicKey(config.tokenMint);
-      const [poolPda] = derivePoolPda(tokenMint);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      setWithdrawProgress({ current: i + 1, total: ids.length });
 
-      const poolAccount = await connection.getAccountInfo(poolPda);
-      let merkleRoot = '0'.repeat(64);
-      if (poolAccount && poolAccount.data.length >= 159) {
-        merkleRoot = Buffer.from(poolAccount.data.slice(127, 159)).toString('hex');
+      const snapshot = depositsRef.current.find(d => d.id === id);
+      if (!snapshot || snapshot.status !== 'available') {
+        continue;
       }
 
-      const deposit = deposits.find(d => d.id === depositId)!;
-      const result = await executeWithdraw(
-        { ...deposit, status: 'available' as const },
-        withdrawAddress,
-        merkleRoot,
+      setDeposits(prev =>
+        prev.map(d => (d.id === id ? { ...d, status: 'withdrawing' as const, withdrawError: undefined } : d)),
       );
 
-      setDeposits(prev =>
-        prev.map(d => d.id === depositId
-          ? { ...d, status: 'withdrawn' as const, withdrawTx: result.txSignature }
-          : d
-        )
-      );
-    } catch (err: any) {
-      console.error('Withdrawal failed:', err);
-      setDeposits(prev =>
-        prev.map(d => d.id === depositId
-          ? { ...d, status: 'error' as const, withdrawError: err.message }
-          : d
-        )
-      );
+      try {
+        const merkleRoot = await fetchMerkleRootHex();
+        const result = await executeWithdraw(
+          { ...snapshot, status: 'available' as const },
+          withdrawAddress.trim(),
+          merkleRoot,
+        );
+        setDeposits(prev =>
+          prev.map(d =>
+            d.id === id ? { ...d, status: 'withdrawn' as const, withdrawTx: result.txSignature, withdrawError: undefined } : d,
+          ),
+        );
+        setSelectedDepositIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      } catch (err: any) {
+        console.error('Withdrawal failed:', err);
+        setDeposits(prev =>
+          prev.map(d =>
+            d.id === id ? { ...d, status: 'error' as const, withdrawError: err.message || 'Withdraw failed' } : d,
+          ),
+        );
+      }
     }
-  }, [withdrawAddress, deposits, connection]);
+
+    setWithdrawRunning(false);
+    setWithdrawModalIds(null);
+  }, [withdrawAddress, withdrawModalIds, fetchMerkleRootHex]);
+
+  const openWithdrawModal = useCallback((ids: string[]) => {
+    const available = ids.filter(id => depositsRef.current.some(d => d.id === id && d.status === 'available'));
+    if (available.length === 0) return;
+    setWithdrawModalIds(available);
+  }, []);
+
+  const toggleDepositSelected = useCallback((id: string) => {
+    setSelectedDepositIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const formatAmount = (amount: bigint) => {
     const decimals = 6;
@@ -225,184 +276,63 @@ export default function DashboardPage() {
     return true;
   });
 
+  const availableInFilter = filteredDeposits.filter(d => d.status === 'available');
+  const selectedAvailableIds = [...selectedDepositIds].filter(id =>
+    deposits.some(d => d.id === id && d.status === 'available'),
+  );
+
   const copyLink = () => {
-    const link = registeredName ? `skaus.me/${registeredName}` : '';
-    if (!link) return;
-    navigator.clipboard.writeText(link);
+    if (!registeredName) return;
+    navigator.clipboard.writeText(getPublicProfileUrl(registeredName));
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
-  if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-skaus-dark">
-        <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+  if (!ready || !authenticated) {
+    return null;
   }
 
-  if (!authenticated) return null;
-
-  const sidebarItems: { id: SidebarTab; label: string; icon: JSX.Element }[] = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-        </svg>
-      ),
-    },
-    {
-      id: 'links',
-      label: 'Links',
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-3.06a4.5 4.5 0 00-1.242-7.244l4.5-4.5a4.5 4.5 0 016.364 6.364l-1.757 1.757" />
-        </svg>
-      ),
-    },
-    {
-      id: 'activities',
-      label: 'Activities',
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-    },
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      ),
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-skaus-dark flex">
-      {/* Mobile sidebar backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-skaus-darker border-r border-skaus-border flex flex-col transition-transform duration-300 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      }`}>
-        {/* Logo */}
-        <div className="px-6 py-6 border-b border-skaus-border">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-skaus-primary/20 flex items-center justify-center">
-              <span className="text-sm font-black text-skaus-primary">S</span>
-            </div>
-            <span className="text-lg font-black tracking-tight">
-              <span className="text-skaus-primary">S</span>KAUS
-            </span>
-            <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-skaus-muted bg-skaus-surface px-1.5 py-0.5 rounded">
-              beta
-            </span>
-          </Link>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {sidebarItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setActiveTab(item.id);
-                setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                activeTab === item.id
-                  ? 'bg-skaus-primary/10 text-skaus-primary'
-                  : 'text-skaus-muted hover:text-white hover:bg-skaus-surface'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Sidebar footer */}
-        <div className="px-4 py-4 border-t border-skaus-border space-y-3">
-          {walletAddress && (
-            <div className="flex items-center gap-2 px-2">
-              <div className="w-7 h-7 rounded-full bg-skaus-primary/20 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-skaus-primary">
-                  {(registeredName || walletAddress)[0].toUpperCase()}
-                </span>
-              </div>
-              <div className="min-w-0 flex-1">
-                {registeredName && (
-                  <p className="text-xs font-semibold text-white truncate">@{registeredName}</p>
-                )}
-                <p className="text-[10px] font-mono text-skaus-muted truncate">
-                  {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
-                </p>
-              </div>
-            </div>
-          )}
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-skaus-muted hover:text-white hover:bg-skaus-surface transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-            </svg>
-            Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="flex-1 min-h-screen">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-skaus-dark/80 backdrop-blur-xl border-b border-skaus-border px-6 lg:px-10 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-1.5 rounded-lg hover:bg-skaus-surface transition-colors"
-            >
-              <svg className="w-5 h-5 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
-            </button>
-            <h1 className="text-xl font-bold">Dashboard</h1>
-          </div>
-
-          <div className="flex items-center gap-3">
+    <>
+      <DashboardShell
+        title="Dashboard"
+        headerRight={
+          <>
             {relayActive !== null && (
-              <span className={`hidden sm:inline-flex text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
-                relayActive
-                  ? 'bg-skaus-success/10 text-skaus-success border border-skaus-success/20'
-                  : 'bg-skaus-warning/10 text-skaus-warning border border-skaus-warning/20'
-              }`}>
+              <span
+                className={`hidden sm:inline-flex text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                  relayActive
+                    ? 'bg-skaus-success/10 text-skaus-success border border-skaus-success/20'
+                    : 'bg-skaus-warning/10 text-skaus-warning border border-skaus-warning/20'
+                }`}
+              >
                 Relay {relayActive ? 'Active' : 'Offline'}
               </span>
             )}
             <button
+              type="button"
               onClick={scanDeposits}
               disabled={scanning}
               className="flex items-center gap-2 px-4 py-2 bg-skaus-primary hover:bg-skaus-primary-hover text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
             >
-              <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+              <svg
+                className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+                />
               </svg>
               {scanning ? 'Scanning...' : 'Scan'}
             </button>
-          </div>
-        </header>
-
+          </>
+        }
+      >
         <div className="px-6 lg:px-10 py-8 space-y-6 max-w-5xl">
           {scanError && (
             <div className="flex items-center gap-3 p-3 bg-skaus-warning/5 border border-skaus-warning/20 rounded-xl text-sm text-skaus-warning">
@@ -493,67 +423,89 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Your Personal Link Card */}
-          {registeredName && (
-            <div className="rounded-2xl border border-skaus-border bg-skaus-surface/80 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-bold text-white">Your Personal Link</h3>
-                  <p className="text-xs text-skaus-muted mt-0.5">Share to get paid</p>
+          {/* Personalised link — always visible */}
+          <div className="rounded-2xl border border-skaus-border bg-skaus-surface/80 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-white">Your personal link</h3>
+                <p className="text-xs text-skaus-muted mt-0.5">Share to get paid</p>
+              </div>
+            </div>
+
+            <label htmlFor="dashboard-personalised-link" className="block text-[11px] font-semibold uppercase tracking-wider text-skaus-muted mb-2">
+              Personalised link
+            </label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex flex-1 items-center gap-3 min-w-0 bg-skaus-darker rounded-xl px-3 py-2 border border-skaus-border">
+                <div className="w-8 h-8 rounded-full bg-skaus-primary/15 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-black text-skaus-primary">S</span>
                 </div>
-                <button className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
-                  <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
-                  </svg>
-                </button>
+                <input
+                  id="dashboard-personalised-link"
+                  readOnly
+                  value={registeredName ? getPublicProfileUrl(registeredName) : ''}
+                  placeholder="Complete onboarding to get your link"
+                  className="flex-1 min-w-0 bg-transparent border-0 text-sm font-mono text-white placeholder:text-skaus-muted/70 focus:outline-none focus:ring-0"
+                />
               </div>
 
-              <div className="flex items-center justify-between bg-skaus-darker rounded-xl px-4 py-3 border border-skaus-border">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-skaus-primary/15 flex items-center justify-center">
-                    <span className="text-xs font-black text-skaus-primary">S</span>
-                  </div>
-                  <span className="text-sm font-mono text-white">skaus.me/<span className="text-skaus-primary font-semibold">{registeredName}</span></span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {/* Copy */}
-                  <button
-                    onClick={copyLink}
-                    className="p-2 rounded-lg hover:bg-white/5 transition-colors"
-                    title="Copy link"
-                  >
-                    {linkCopied ? (
-                      <svg className="w-4 h-4 text-skaus-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-                      </svg>
-                    )}
-                  </button>
-                  {/* QR Code */}
-                  <button className="p-2 rounded-lg hover:bg-white/5 transition-colors" title="Show QR code">
-                    <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
+              <div className="flex items-center justify-end gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  disabled={!registeredName}
+                  className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  title="Copy link"
+                >
+                  {linkCopied ? (
+                    <svg className="w-4 h-4 text-skaus-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                     </svg>
-                  </button>
-                  {/* External link */}
+                  ) : (
+                    <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => registeredName && setShowQrModal(true)}
+                  disabled={!registeredName}
+                  className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  title="Show QR code"
+                >
+                  <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
+                  </svg>
+                </button>
+                {registeredName ? (
                   <Link
                     href={`/${registeredName}`}
                     className="p-2 rounded-lg hover:bg-white/5 transition-colors"
-                    title="View profile"
+                    title="Open your profile"
                   >
                     <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                     </svg>
                   </Link>
-                </div>
+                ) : (
+                  <Link
+                    href="/onboarding"
+                    className="p-2 rounded-lg hover:bg-white/5 transition-colors text-xs font-semibold text-skaus-primary px-3"
+                    title="Claim your username"
+                  >
+                    Set up
+                  </Link>
+                )}
               </div>
             </div>
-          )}
+            {!registeredName && (
+              <p className="text-[11px] text-skaus-muted mt-3">
+                Finish onboarding to show your public pay link here. It is stored on this device after you register.
+              </p>
+            )}
+          </div>
 
           {/* Activity Section */}
           <div className="rounded-2xl border border-skaus-border bg-skaus-surface/80 overflow-hidden">
@@ -575,7 +527,38 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                {availableInFilter.length > 0 && activityFilter !== 'outgoing' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedDepositIds(
+                          new Set(availableInFilter.map(d => d.id)),
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg border border-skaus-border text-[10px] font-semibold text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-colors"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDepositIds(new Set())}
+                      disabled={selectedDepositIds.size === 0}
+                      className="px-2.5 py-1.5 rounded-lg border border-skaus-border text-[10px] font-semibold text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-colors disabled:opacity-40"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openWithdrawModal(selectedAvailableIds)}
+                      disabled={selectedAvailableIds.length === 0}
+                      className="px-3 py-1.5 rounded-lg bg-skaus-primary/15 text-skaus-primary text-[10px] font-bold hover:bg-skaus-primary/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      Withdraw selected{selectedAvailableIds.length > 0 ? ` (${selectedAvailableIds.length})` : ''}
+                    </button>
+                  </>
+                )}
                 <select
                   value={scanMode}
                   onChange={(e) => setScanMode(e.target.value as 'indexer' | 'onchain')}
@@ -611,8 +594,17 @@ export default function DashboardPage() {
                 {filteredDeposits.map(deposit => (
                   <div key={deposit.id} className="px-5 py-4 hover:bg-white/[0.02] transition-colors">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                      <div className="flex items-center gap-3 min-w-0">
+                        {deposit.status === 'available' && activityFilter !== 'outgoing' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedDepositIds.has(deposit.id)}
+                            onChange={() => toggleDepositSelected(deposit.id)}
+                            className="h-4 w-4 rounded border-skaus-border bg-skaus-darker text-skaus-primary focus:ring-skaus-primary shrink-0"
+                            aria-label={`Select deposit ${deposit.commitment.slice(0, 8)}`}
+                          />
+                        )}
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
                           deposit.status === 'available'
                             ? 'bg-skaus-success/10'
                             : deposit.status === 'withdrawn'
@@ -668,7 +660,8 @@ export default function DashboardPage() {
                         </div>
                         {deposit.status === 'available' && (
                           <button
-                            onClick={() => setShowWithdrawModal(deposit.id)}
+                            type="button"
+                            onClick={() => openWithdrawModal([deposit.id])}
                             className="px-3 py-1.5 bg-skaus-primary/10 text-skaus-primary text-xs font-bold rounded-lg hover:bg-skaus-primary/20 transition-colors"
                           >
                             Withdraw
@@ -696,43 +689,124 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-      </main>
+      </DashboardShell>
 
-      {/* Withdraw Modal */}
-      {showWithdrawModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-md w-full mx-4 space-y-4 animate-scale-in">
+      {/* QR code for personalised pay link */}
+      {showQrModal && registeredName && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowQrModal(false)}
+          role="presentation"
+        >
+          <div
+            className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-sm w-full space-y-4 animate-scale-in shadow-xl"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="qr-modal-title"
+          >
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">Withdraw</h3>
-              <button onClick={() => setShowWithdrawModal(null)} className="p-1 rounded-lg hover:bg-white/5 transition-colors">
+              <h3 id="qr-modal-title" className="text-lg font-bold">Pay link QR</h3>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="p-1 rounded-lg hover:bg-white/5 transition-colors"
+                aria-label="Close"
+              >
                 <svg className="w-5 h-5 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
+            <p className="text-xs text-skaus-muted">Scan to open your public pay page.</p>
+            <div className="flex justify-center p-4 rounded-xl bg-white">
+              <QRCode
+                value={getPublicProfileUrl(registeredName)}
+                size={220}
+                level="M"
+                fgColor="#0f172a"
+                bgColor="#ffffff"
+              />
+            </div>
+            <p className="text-[11px] font-mono text-skaus-muted break-all text-center">
+              {getPublicProfileUrl(registeredName)}
+            </p>
+            <button
+              type="button"
+              onClick={() => copyLink()}
+              className="w-full py-2.5 rounded-xl bg-skaus-primary hover:bg-skaus-primary-hover text-white text-sm font-bold transition-all"
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw modal (single or bulk — one relay tx per deposit) */}
+      {withdrawModalIds && withdrawModalIds.length > 0 && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-md w-full space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold">
+                {withdrawModalIds.length > 1 ? `Withdraw ${withdrawModalIds.length} deposits` : 'Withdraw'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => !withdrawRunning && setWithdrawModalIds(null)}
+                disabled={withdrawRunning}
+                className="p-1 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                <svg className="w-5 h-5 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {withdrawModalIds.length > 1 && (
+              <p className="text-xs text-skaus-muted bg-skaus-darker/80 border border-skaus-border rounded-lg px-3 py-2">
+                Each deposit is withdrawn in a separate on-chain transaction (same recipient for all). The relayer submits them one after another.
+              </p>
+            )}
             <p className="text-sm text-skaus-muted">
               Enter the destination address. Use a <span className="text-white font-semibold">fresh address</span> for maximum privacy.
             </p>
             <input
               type="text"
               value={withdrawAddress}
-              onChange={(e) => setWithdrawAddress(e.target.value)}
+              onChange={(e) => {
+                setWithdrawAddress(e.target.value);
+                setWithdrawAddressError(null);
+              }}
               placeholder="Recipient Solana address..."
-              className="input-field font-mono text-sm"
+              disabled={withdrawRunning}
+              className="input-field font-mono text-sm disabled:opacity-50"
             />
+            {withdrawAddressError && (
+              <p className="text-xs text-skaus-error">{withdrawAddressError}</p>
+            )}
+            {withdrawRunning && withdrawProgress.total > 0 && (
+              <p className="text-xs text-skaus-muted text-center">
+                Processing deposit {withdrawProgress.current} of {withdrawProgress.total}…
+              </p>
+            )}
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => setShowWithdrawModal(null)}
-                className="flex-1 py-2.5 rounded-xl border border-skaus-border text-sm text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-all"
+                type="button"
+                onClick={() => !withdrawRunning && setWithdrawModalIds(null)}
+                disabled={withdrawRunning}
+                className="flex-1 py-2.5 rounded-xl border border-skaus-border text-sm text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-all disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={() => handleWithdraw(showWithdrawModal)}
-                disabled={!withdrawAddress}
+                type="button"
+                onClick={() => void confirmWithdraw()}
+                disabled={!withdrawAddress.trim() || withdrawRunning}
                 className="flex-1 py-2.5 rounded-xl bg-skaus-primary hover:bg-skaus-primary-hover text-white text-sm font-bold transition-all disabled:opacity-50"
               >
-                Withdraw via Relay
+                {withdrawRunning
+                  ? 'Working…'
+                  : withdrawModalIds.length > 1
+                    ? `Withdraw ${withdrawModalIds.length} via relay`
+                    : 'Withdraw via relay'}
               </button>
             </div>
             {relayActive === false && (
@@ -743,6 +817,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

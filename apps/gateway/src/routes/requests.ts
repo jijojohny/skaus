@@ -5,9 +5,15 @@ import { config } from '../config';
 interface StoredRequest {
   id: string;
   creator: string;
+  /** @username used in pay URL /{username}/request/{id} */
+  username: string;
   amount: number;
   token: string;
   memo: string;
+  /** Display title for link cards */
+  title: string;
+  /** If true, payers choose amount on the pay page */
+  openAmount: boolean;
   expiresAt: number | null;
   maxPayments: number;
   depositPathIndex: number;
@@ -15,6 +21,7 @@ interface StoredRequest {
   payments: Array<{ txSignature: string; amount: number; paidAt: number }>;
   createdAt: number;
   updatedAt: number;
+  views: number;
 }
 
 /**
@@ -23,6 +30,16 @@ interface StoredRequest {
  */
 const requestStore = new Map<string, StoredRequest>();
 const requestsByCreator = new Map<string, Set<string>>();
+
+/** Backfill fields for records created before link-metadata fields existed */
+function normalizeRequest(s: StoredRequest): StoredRequest {
+  const r = s as StoredRequest & { username?: string; title?: string; openAmount?: boolean; views?: number };
+  if (!r.username) r.username = r.creator.slice(0, 8);
+  if (r.title === undefined || r.title === '') r.title = r.memo?.trim() ? r.memo.slice(0, 120) : 'Payment link';
+  if (r.openAmount === undefined) r.openAmount = r.amount === 0;
+  if (r.views === undefined) r.views = 0;
+  return r as StoredRequest;
+}
 
 export async function requestRoutes(app: FastifyInstance) {
   /**
@@ -33,29 +50,58 @@ export async function requestRoutes(app: FastifyInstance) {
   app.post<{
     Body: {
       creator: string;
+      username: string;
       amount: number;
       token?: string;
       memo?: string;
+      title?: string;
+      openAmount?: boolean;
       expiresAt?: number;
       maxPayments?: number;
       depositPathIndex: number;
     };
   }>('/', async (request, reply) => {
-    const { creator, amount, token, memo, expiresAt, maxPayments, depositPathIndex } = request.body;
+    const {
+      creator,
+      username,
+      amount,
+      token,
+      memo,
+      title,
+      openAmount: openAmountBody,
+      expiresAt,
+      maxPayments,
+      depositPathIndex,
+    } = request.body;
 
-    if (!creator || !amount || depositPathIndex === undefined) {
-      return reply.status(400).send({ error: 'Missing required fields: creator, amount, depositPathIndex' });
+    if (!creator || !username || depositPathIndex === undefined) {
+      return reply
+        .status(400)
+        .send({ error: 'Missing required fields: creator, username, depositPathIndex' });
+    }
+
+    const openAmount = Boolean(openAmountBody);
+    const amt = Number(amount);
+    if (Number.isNaN(amt) || amt < 0) {
+      return reply.status(400).send({ error: 'Invalid amount' });
+    }
+    if (!openAmount && amt <= 0) {
+      return reply.status(400).send({ error: 'Fixed amount must be greater than zero' });
     }
 
     const id = randomUUID();
     const now = Date.now();
+    const linkTitle = (title && String(title).trim()) || 'Payment link';
 
     const stored: StoredRequest = {
       id,
       creator,
-      amount,
+      username,
+      amount: openAmount ? 0 : amt,
       token: token || 'USDC',
       memo: memo || '',
+      title: linkTitle,
+      openAmount,
       expiresAt: expiresAt || null,
       maxPayments: maxPayments || 1,
       depositPathIndex,
@@ -63,6 +109,7 @@ export async function requestRoutes(app: FastifyInstance) {
       payments: [],
       createdAt: now,
       updatedAt: now,
+      views: 0,
     };
 
     requestStore.set(id, stored);
@@ -71,7 +118,15 @@ export async function requestRoutes(app: FastifyInstance) {
     }
     requestsByCreator.get(creator)!.add(id);
 
-    const payUrl = buildRequestUrl(creator, id, amount, stored.token, stored.memo, expiresAt);
+    const payUrl = buildRequestUrl(
+      username,
+      id,
+      stored.amount,
+      stored.token,
+      stored.memo,
+      expiresAt,
+      openAmount,
+    );
 
     return reply.status(201).send({
       ...stored,
@@ -84,7 +139,7 @@ export async function requestRoutes(app: FastifyInstance) {
    *
    * Get a payment request by ID.
    */
-  app.get<{ Params: { id: string } }>(
+  app.get<{ Params: { id: string }; Querystring: { recordView?: string } }>(
     '/:id',
     async (request, reply) => {
       const stored = requestStore.get(request.params.id);
@@ -93,9 +148,14 @@ export async function requestRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Payment request not found' });
       }
 
-      checkExpiry(stored);
+      const out = normalizeRequest(stored);
+      checkExpiry(out);
+      if (request.query.recordView === '1') {
+        out.views += 1;
+        out.updatedAt = Date.now();
+      }
 
-      return reply.send(stored);
+      return reply.send(out);
     },
   );
 
@@ -116,7 +176,7 @@ export async function requestRoutes(app: FastifyInstance) {
       }
 
       let requests = Array.from(ids)
-        .map(id => requestStore.get(id)!)
+        .map(id => normalizeRequest(requestStore.get(id)!))
         .filter(Boolean);
 
       requests.forEach(checkExpiry);
@@ -193,14 +253,21 @@ export async function requestRoutes(app: FastifyInstance) {
 
       const totalPaid = stored.payments.reduce((sum, p) => sum + p.amount, 0);
 
-      if (totalPaid >= stored.amount) {
-        stored.status = 'paid';
-      } else if (totalPaid > 0) {
-        stored.status = 'partial';
-      }
-
-      if (stored.payments.length >= stored.maxPayments && stored.status !== 'paid') {
-        stored.status = 'paid';
+      if (stored.openAmount) {
+        if (stored.payments.length >= stored.maxPayments) {
+          stored.status = 'paid';
+        } else if (totalPaid > 0) {
+          stored.status = 'partial';
+        }
+      } else {
+        if (totalPaid >= stored.amount) {
+          stored.status = 'paid';
+        } else if (totalPaid > 0) {
+          stored.status = 'partial';
+        }
+        if (stored.payments.length >= stored.maxPayments && stored.status !== 'paid') {
+          stored.status = 'paid';
+        }
       }
 
       stored.updatedAt = Date.now();
@@ -218,17 +285,20 @@ function checkExpiry(req: StoredRequest) {
 }
 
 function buildRequestUrl(
-  creator: string,
+  username: string,
   id: string,
   amount: number,
   token: string,
   memo: string,
   expiresAt?: number,
+  openAmount?: boolean,
 ): string {
   const params = new URLSearchParams();
   params.set('amount', amount.toString());
   params.set('token', token);
   if (memo) params.set('memo', memo);
   if (expiresAt) params.set('expires', expiresAt.toString());
-  return `https://skaus.pay/${creator}/request/${id}?${params.toString()}`;
+  if (openAmount) params.set('open', '1');
+  const path = `/${encodeURIComponent(username)}/request/${id}?${params.toString()}`;
+  return `${config.webAppPublicUrl}${path}`;
 }

@@ -11,7 +11,8 @@
     "dev:web": "pnpm --filter @skaus/web dev",
     "build:circuits": "pnpm --filter @skaus/circuits build",
     "test:programs": "anchor test",
-    "build:programs": "anchor build"
+    "build:programs": "anchor build",
+    "e2e:smoke": "tsx scripts/e2e-smoke.ts"
   },
   "engines": {
     "node": ">=18.0.0",

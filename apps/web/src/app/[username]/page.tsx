@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { createPrivySolanaSigner } from '@/lib/privy-solana-signer';
 import { lookupName, fetchProfile, type NameLookupResult } from '@/lib/gateway';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
@@ -70,8 +72,16 @@ const MOCK_PROFILES: Record<string, CompressedProfile> = DEMO_MODE ? DEMO_PROFIL
 export default function ProfilePage({ params }: ProfilePageProps) {
   const { username } = params;
   const { authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
+  const solWallet = wallets[0];
+  const { signTransaction: privySignTransaction } = useSignTransaction();
 
-  const walletAddress = user?.wallet?.address;
+  const walletAddress = user?.wallet?.address || solWallet?.address;
+
+  const signTransaction = useMemo(
+    () => createPrivySolanaSigner(solWallet, privySignTransaction),
+    [solWallet, privySignTransaction],
+  );
   const connection = new Connection(
     process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
   );
@@ -125,7 +135,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   }, [username]);
 
   const handleDeposit = useCallback(async (amount: bigint, token: string) => {
-    if (!walletAddress) return;
+    if (!walletAddress || !solWallet) return;
 
     setTxStatus('preparing');
     setError(null);
@@ -152,7 +162,6 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       }
 
       const publicKey = new PublicKey(walletAddress);
-      const signTransaction = async (tx: any) => tx;
 
       const result = await executeDeposit(
         connection,
@@ -173,7 +182,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       setError(err.message || 'Transaction failed');
       setTxStatus('error');
     }
-  }, [walletAddress, connection, nameData]);
+  }, [walletAddress, connection, nameData, signTransaction, solWallet]);
 
   if (loading) {
     return (

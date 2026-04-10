@@ -141,9 +141,12 @@ export async function lookupByAuthority(address: string): Promise<{
 export interface PaymentRequestData {
   id: string;
   creator: string;
+  username?: string;
   amount: number;
   token: string;
   memo: string;
+  title?: string;
+  openAmount?: boolean;
   expiresAt: number | null;
   maxPayments: number;
   depositPathIndex: number;
@@ -152,13 +155,17 @@ export interface PaymentRequestData {
   createdAt: number;
   updatedAt: number;
   payUrl?: string;
+  views?: number;
 }
 
 export async function createPaymentRequest(body: {
   creator: string;
+  username: string;
   amount: number;
   token?: string;
   memo?: string;
+  title?: string;
+  openAmount?: boolean;
   expiresAt?: number;
   maxPayments?: number;
   depositPathIndex: number;
@@ -172,8 +179,12 @@ export async function createPaymentRequest(body: {
   return res.json();
 }
 
-export async function getPaymentRequest(id: string): Promise<PaymentRequestData> {
-  const res = await fetch(`${config.gatewayUrl}/requests/${id}`);
+export async function getPaymentRequest(
+  id: string,
+  options?: { recordView?: boolean },
+): Promise<PaymentRequestData> {
+  const q = options?.recordView ? '?recordView=1' : '';
+  const res = await fetch(`${config.gatewayUrl}/requests/${id}${q}`);
   if (!res.ok) throw new Error('Payment request not found');
   return res.json();
 }

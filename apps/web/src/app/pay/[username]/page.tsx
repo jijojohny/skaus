@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { createPrivySolanaSigner } from '@/lib/privy-solana-signer';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 import { DepositForm } from '@/components/DepositForm';
@@ -18,8 +20,16 @@ interface PayPageProps {
 export default function PayPage({ params }: PayPageProps) {
   const { username } = params;
   const { authenticated, user, login } = usePrivy();
+  const { wallets } = useWallets();
+  const solWallet = wallets[0];
+  const { signTransaction: privySignTransaction } = useSignTransaction();
 
-  const walletAddress = user?.wallet?.address;
+  const walletAddress = user?.wallet?.address || solWallet?.address;
+
+  const signTransaction = useMemo(
+    () => createPrivySolanaSigner(solWallet, privySignTransaction),
+    [solWallet, privySignTransaction],
+  );
   const connection = new Connection(
     process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
   );
@@ -37,7 +47,7 @@ export default function PayPage({ params }: PayPageProps) {
   }, [username]);
 
   const handleDeposit = useCallback(async (amount: bigint, token: string) => {
-    if (!walletAddress) return;
+    if (!walletAddress || !solWallet) return;
 
     setTxStatus('resolving');
     setError(null);
@@ -70,7 +80,6 @@ export default function PayPage({ params }: PayPageProps) {
       }
 
       const publicKey = new PublicKey(walletAddress);
-      const signTransaction = async (tx: any) => tx;
 
       const result = await executeDeposit(
         connection,
@@ -92,7 +101,7 @@ export default function PayPage({ params }: PayPageProps) {
       setError(err.message || 'Transaction failed');
       setTxStatus('error');
     }
-  }, [walletAddress, connection, payLinkData]);
+  }, [walletAddress, connection, payLinkData, signTransaction, solWallet]);
 
   return (
     <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
