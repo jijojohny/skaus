@@ -211,6 +211,12 @@ function OnboardingContent() {
 
       setTxSignature(txSig);
       setStep('done');
+
+      try {
+        localStorage.setItem('skaus_username', username);
+        localStorage.setItem('skaus_wallet', walletAddress);
+      } catch {}
+
     } catch (err: any) {
       console.error('Onboarding error:', err);
       let msg = err.message || 'Something went wrong';

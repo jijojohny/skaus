@@ -3,11 +3,12 @@
 import { ReactNode } from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
-import { createSolanaRpc } from '@solana/kit';
+import { createSolanaRpc, createSolanaRpcSubscriptions } from '@solana/kit';
 
 const solanaConnectors = toSolanaWalletConnectors();
 
 const DEVNET_RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+const DEVNET_WS_URL = DEVNET_RPC_URL.replace('https://', 'wss://').replace('http://', 'ws://');
 
 export function PrivyAuthProvider({ children }: { children: ReactNode }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID || '';
@@ -36,9 +37,11 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
           rpcs: {
             'solana:devnet': {
               rpc: createSolanaRpc(DEVNET_RPC_URL),
+              rpcSubscriptions: createSolanaRpcSubscriptions(DEVNET_WS_URL),
             },
             'solana:mainnet': {
               rpc: createSolanaRpc(DEVNET_RPC_URL),
+              rpcSubscriptions: createSolanaRpcSubscriptions(DEVNET_WS_URL),
             },
           },
         },
