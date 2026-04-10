@@ -3,7 +3,7 @@ use anchor_lang::system_program;
 
 use crate::errors::NameRegistryError;
 use crate::state::*;
-use crate::utils::validation::{validate_name, validate_stealth_meta_address};
+use crate::utils::validation::{validate_name, validate_stealth_meta_address, verify_name_hash};
 
 #[derive(Accounts)]
 #[instruction(name: String, name_hash: [u8; 32])]
@@ -48,6 +48,7 @@ pub fn register_name_handler(
     stealth_meta_address: StealthMetaAddress,
 ) -> Result<()> {
     validate_name(&name)?;
+    verify_name_hash(&name, &name_hash)?;
     validate_stealth_meta_address(&stealth_meta_address)?;
 
     if ctx.accounts.config.registration_fee > 0 {

@@ -1,6 +1,7 @@
 export interface StealthMetaAddress {
   scanPubkey: Uint8Array;   // Curve25519 public key for detecting deposits
   spendPubkey: Uint8Array;  // Curve25519 public key for spending
+  /** On-chain u8 (0-255). */
   version: number;
 }
 

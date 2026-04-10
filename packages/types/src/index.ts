@@ -85,7 +85,15 @@ export interface NameRecord {
 export interface OnChainStealthMetaAddress {
   scanPubkey: Uint8Array;
   spendPubkey: Uint8Array;
+  /** On-chain u8 (0-255). Must not exceed 255 when constructing transactions. */
   version: number;
+}
+
+/** Validate that a stealth meta-address version fits in a u8 (on-chain constraint). */
+export function assertValidVersion(version: number): void {
+  if (!Number.isInteger(version) || version < 0 || version > 255) {
+    throw new RangeError(`StealthMetaAddress version must be 0-255, got ${version}`);
+  }
 }
 
 export type NameStatus = 'active' | 'suspended' | 'expired';
