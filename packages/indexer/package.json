@@ -1,0 +1,6 @@
+{
+  "name": "@skaus/indexer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SKAUS on-chain event indexer (placeholder)"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@skaus/gateway-lib",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SKAUS shared gateway utilities (placeholder)"
+}

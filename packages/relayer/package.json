@@ -1,0 +1,6 @@
+{
+  "name": "@skaus/relayer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SKAUS withdrawal relayer service (placeholder)"
+}

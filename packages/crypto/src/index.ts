@@ -1,7 +1,9 @@
-export { StealthKeyPair, generateStealthKeys, deriveStealthAddress, recoverStealthSpendKey } from './stealth';
+export type { StealthKeyPair } from './stealth';
+export { generateStealthKeys, deriveStealthAddress, recoverStealthSpendKey } from './stealth';
 export { computeCommitment, computeNullifierHash } from './commitment';
 export { encryptNote, decryptNote } from './encryption';
-export { KeyHierarchy, deriveKeyHierarchy } from './keys';
+export type { KeyHierarchy } from './keys';
+export { deriveKeyHierarchy } from './keys';
 export {
   hashName,
   deriveNameRecordPDA,

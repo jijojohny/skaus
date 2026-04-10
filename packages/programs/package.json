@@ -1,0 +1,6 @@
+{
+  "name": "@skaus/programs",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SKAUS on-chain program TypeScript bindings (placeholder)"
+}

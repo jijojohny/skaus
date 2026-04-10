@@ -23,7 +23,7 @@ async function buildServer() {
 
   await app.register(cors, {
     origin: config.corsOrigins,
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PUT'],
   });
 
   await app.register(rateLimit, {

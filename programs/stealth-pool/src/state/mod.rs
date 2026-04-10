@@ -14,7 +14,11 @@ pub const MERKLE_TREE_DEPTH: usize = 20;
 /// Maximum size for the encrypted routing metadata attached to each deposit.
 /// Contains ECDH ephemeral pubkey + ChaCha20-Poly1305 ciphertext wrapping
 /// the secret, nullifier, and routing info for the recipient.
-pub const MAX_ENCRYPTED_NOTE_SIZE: usize = 512;
+///
+/// Breakdown: 32 (ephemeral pubkey) + 12 (nonce) + ~424 (worst-case
+/// ciphertext) + 16 (auth tag) ≈ 484 bytes. 1024 provides safe headroom
+/// for future field additions (viewing hints, routing tags, etc.).
+pub const MAX_ENCRYPTED_NOTE_SIZE: usize = 1024;
 
 pub const DEPOSIT_TIERS_USDC: [u64; 4] = [
     10_000_000,      // 10 USDC    (6 decimals)

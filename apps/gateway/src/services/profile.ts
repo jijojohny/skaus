@@ -1,20 +1,60 @@
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import type { CompressedProfile } from '@skaus/types';
 
 /**
- * Profile service — manages compressed profiles.
+ * Profile service — manages compressed profiles with file-backed persistence.
  *
- * Current: in-memory store for development.
- * Production: Light Protocol ZK Compression for on-chain storage
- * at ~$0.0001 per profile (vs ~$3+ per profile with standard accounts).
+ * Data is stored as JSON on disk and cached in memory for fast reads.
+ * Every mutation flushes to disk via atomic write (temp file + rename)
+ * to prevent corruption on crash.
  *
- * The Light Protocol integration will use:
- *   - @lightprotocol/stateless.js for RPC
- *   - @lightprotocol/compressed-token for account ops
- *   - Borsh serialization matching the on-chain schema
+ * Production: replace with Light Protocol ZK Compression for on-chain
+ * storage at ~$0.0001 per profile (vs ~$3+ with standard accounts).
  */
 
-const profileStore = new Map<string, CompressedProfile>();
-const profileByNameHash = new Map<string, string>();
+const DATA_DIR = process.env.PROFILE_DATA_DIR || join(process.cwd(), 'data');
+const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
+
+// In-memory cache, loaded from disk on startup
+let profileStore = new Map<string, CompressedProfile>();
+let profileByNameHash = new Map<string, string>();
+
+interface PersistedState {
+  profiles: Record<string, CompressedProfile>;
+  nameHashIndex: Record<string, string>;
+}
+
+function loadFromDisk(): void {
+  if (!existsSync(PROFILES_FILE)) return;
+  try {
+    const raw = readFileSync(PROFILES_FILE, 'utf-8');
+    const data: PersistedState = JSON.parse(raw);
+    profileStore = new Map(Object.entries(data.profiles || {}));
+    profileByNameHash = new Map(Object.entries(data.nameHashIndex || {}));
+  } catch {
+    // Corrupt file — start fresh but don't delete the file
+    profileStore = new Map();
+    profileByNameHash = new Map();
+  }
+}
+
+function flushToDisk(): void {
+  const data: PersistedState = {
+    profiles: Object.fromEntries(profileStore),
+    nameHashIndex: Object.fromEntries(profileByNameHash),
+  };
+  const json = JSON.stringify(data, null, 2);
+
+  // Atomic write: write to temp, then rename
+  mkdirSync(dirname(PROFILES_FILE), { recursive: true });
+  const tmp = PROFILES_FILE + '.tmp';
+  writeFileSync(tmp, json, 'utf-8');
+  renameSync(tmp, PROFILES_FILE);
+}
+
+// Load existing data on module initialization
+loadFromDisk();
 
 export function getProfileByUsername(username: string): CompressedProfile | null {
   return profileStore.get(username.toLowerCase()) || null;
@@ -33,10 +73,13 @@ export function upsertProfile(username: string, profile: CompressedProfile, name
   if (nameHash) {
     profileByNameHash.set(nameHash, key);
   }
+  flushToDisk();
 }
 
 export function deleteProfile(username: string): boolean {
-  return profileStore.delete(username.toLowerCase());
+  const deleted = profileStore.delete(username.toLowerCase());
+  if (deleted) flushToDisk();
+  return deleted;
 }
 
 export function listProfiles(limit = 20, offset = 0): CompressedProfile[] {

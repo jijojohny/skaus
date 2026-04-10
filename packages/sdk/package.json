@@ -1,0 +1,6 @@
+{
+  "name": "@skaus/sdk",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SKAUS client SDK for integration (placeholder)"
+}
