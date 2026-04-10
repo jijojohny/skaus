@@ -10,10 +10,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@farcaster/mini-app-solana": "^2.0.0",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
+    "@privy-io/react-auth": "^3.21.0",
     "@skaus/crypto": "workspace:*",
     "@skaus/types": "workspace:*",
+    "@solana-program/memo": "^0.11.0",
+    "@solana-program/system": "^0.12.0",
+    "@solana-program/token": "^0.13.0",
+    "@solana/kit": "^6.7.0",
     "@solana/spl-token": "^0.4.6",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",

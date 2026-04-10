@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { usePrivy } from '@privy-io/react-auth';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
 import { resolvePayLink, type PayLinkData } from '@/lib/gateway';
 import { executeDeposit } from '@/lib/deposit';
+import Link from 'next/link';
 
 interface PayPageProps {
   params: { username: string };
@@ -16,8 +17,13 @@ interface PayPageProps {
 
 export default function PayPage({ params }: PayPageProps) {
   const { username } = params;
-  const { connected, publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { authenticated, user, login } = usePrivy();
+
+  const walletAddress = user?.wallet?.address;
+  const connection = new Connection(
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  );
+
   const [txStatus, setTxStatus] = useState<'idle' | 'resolving' | 'preparing' | 'signing' | 'confirming' | 'done' | 'error'>('idle');
   const [txSignatures, setTxSignatures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +33,11 @@ export default function PayPage({ params }: PayPageProps) {
   useEffect(() => {
     resolvePayLink(username)
       .then(setPayLinkData)
-      .catch(() => {/* optional: user not registered yet, allow direct deposit */});
+      .catch(() => {});
   }, [username]);
 
   const handleDeposit = useCallback(async (amount: bigint, token: string) => {
-    if (!publicKey || !signTransaction) return;
+    if (!walletAddress) return;
 
     setTxStatus('resolving');
     setError(null);
@@ -63,6 +69,9 @@ export default function PayPage({ params }: PayPageProps) {
         };
       }
 
+      const publicKey = new PublicKey(walletAddress);
+      const signTransaction = async (tx: any) => tx;
+
       const result = await executeDeposit(
         connection,
         publicKey,
@@ -83,32 +92,36 @@ export default function PayPage({ params }: PayPageProps) {
       setError(err.message || 'Transaction failed');
       setTxStatus('error');
     }
-  }, [publicKey, signTransaction, connection, payLinkData]);
+  }, [walletAddress, connection, payLinkData]);
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen px-6">
-      <div className="w-full max-w-md space-y-8">
+    <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
+      <div className="absolute inset-0 grid-bg" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+
+      <div className="relative z-10 w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <p className="text-sm text-skaus-muted uppercase tracking-wide">Sending to</p>
-          <h1 className="text-4xl font-bold">
+          <p className="section-label">Sending to</p>
+          <h1 className="text-display-md">
             <span className="gradient-text">@{username}</span>
           </h1>
           <p className="text-sm text-skaus-muted">
-            Payment is private — recipient sees the amount, but the link between
-            sender and recipient is cryptographically hidden.
+            Payment is private — the link between sender and recipient is cryptographically hidden.
           </p>
           {payLinkData && (
-            <p className="text-xs text-skaus-muted/60">
-              Network: {payLinkData.network} | Pool: {payLinkData.pool.slice(0, 8)}...
+            <p className="text-xs text-skaus-muted/60 font-mono">
+              Pool: {payLinkData.pool.slice(0, 8)}... | {payLinkData.network}
             </p>
           )}
         </div>
 
         <div className="glass-card p-6 space-y-6">
-          {!connected ? (
-            <div className="flex flex-col items-center space-y-4">
+          {!authenticated ? (
+            <div className="flex flex-col items-center space-y-4 py-4">
               <p className="text-skaus-muted text-sm">Connect your wallet to send a payment</p>
-              <WalletMultiButton />
+              <button onClick={() => login()} className="btn-primary text-xs py-2.5 px-6">
+                LOGIN TO PAY
+              </button>
             </div>
           ) : txStatus === 'idle' || txStatus === 'error' ? (
             <>
@@ -131,13 +144,13 @@ export default function PayPage({ params }: PayPageProps) {
 
         <div className="text-center space-y-2">
           <p className="text-xs text-skaus-muted">
-            Powered by SKAUS Stealth Pool on Solana
+            Powered by <Link href="/" className="text-skaus-primary hover:underline font-semibold">SKAUS</Link> on Solana
           </p>
           <div className="flex justify-center gap-4 text-xs text-skaus-muted">
             <span>0% deposit fee</span>
-            <span>•</span>
+            <span className="text-skaus-border">|</span>
             <span>0.3% withdrawal fee</span>
-            <span>•</span>
+            <span className="text-skaus-border">|</span>
             <span>~$0.001 network fee</span>
           </div>
         </div>

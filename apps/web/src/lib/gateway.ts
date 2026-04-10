@@ -125,6 +125,15 @@ export async function checkNameAvailability(username: string): Promise<{ availab
   return res.json();
 }
 
+export async function lookupByAuthority(address: string): Promise<{
+  registered: boolean;
+  names: Array<{ pda: string; nameHash: string; scanPubkey: string; spendPubkey: string }>;
+}> {
+  const res = await fetch(`${config.gatewayUrl}/names/by-authority/${address}`);
+  if (!res.ok) return { registered: false, names: [] };
+  return res.json();
+}
+
 // ---------------------------------------------------------------------------
 // Payment Requests
 // ---------------------------------------------------------------------------

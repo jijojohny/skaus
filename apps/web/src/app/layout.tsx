@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { WalletProviderWrapper } from '@/components/WalletProvider';
+import { PrivyAuthProvider } from '@/components/PrivyAuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'SKAUS — Private Payments on Solana',
-  description: 'Privacy-preserving payment infrastructure. Send and receive funds with cryptographic unlinkability.',
+  description: 'Get paid. Stay private. Privacy-preserving payment infrastructure on Solana with stealth addresses and ZK proofs.',
 };
 
 export default function RootLayout({
@@ -14,10 +14,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen">
-        <WalletProviderWrapper>
+        <PrivyAuthProvider>
           {children}
-        </WalletProviderWrapper>
+        </PrivyAuthProvider>
       </body>
     </html>
   );

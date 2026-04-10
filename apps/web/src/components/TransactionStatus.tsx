@@ -20,7 +20,7 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
   return (
     <div className="space-y-6">
       {progressText && (
-        <p className="text-xs text-skaus-muted text-center">{progressText}</p>
+        <p className="text-xs text-skaus-muted text-center font-mono">{progressText}</p>
       )}
 
       <div className="space-y-4">
@@ -30,23 +30,23 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
 
           return (
             <div key={step.key} className="flex items-start gap-3">
-              <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+              <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
                 isComplete
-                  ? 'bg-skaus-success'
+                  ? 'bg-skaus-primary'
                   : isActive
-                    ? 'bg-skaus-primary animate-pulse'
-                    : 'bg-skaus-border'
+                    ? 'bg-skaus-primary/20 border-2 border-skaus-primary animate-pulse'
+                    : 'bg-skaus-surface border border-skaus-border'
               }`}>
                 {isComplete ? (
                   <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
-                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-white' : 'bg-skaus-muted'}`} />
+                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-skaus-primary' : 'bg-skaus-muted'}`} />
                 )}
               </div>
               <div>
-                <p className={`text-sm font-medium ${isActive || isComplete ? 'text-white' : 'text-skaus-muted'}`}>
+                <p className={`text-sm font-semibold ${isActive || isComplete ? 'text-white' : 'text-skaus-muted'}`}>
                   {step.label}
                 </p>
                 {isActive && (
@@ -60,8 +60,8 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
 
       {status === 'done' && (allSignatures?.length || signature) && (
         <div className="space-y-3">
-          <div className="p-3 bg-skaus-success/10 border border-skaus-success/30 rounded-lg">
-            <p className="text-sm text-skaus-success font-medium">
+          <div className="p-3 bg-skaus-primary/10 border border-skaus-primary/30 rounded-lg">
+            <p className="text-sm text-skaus-primary font-bold">
               Payment sent successfully
               {allSignatures && allSignatures.length > 1 && ` (${allSignatures.length} transactions)`}
             </p>
@@ -79,7 +79,6 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
           </div>
           <p className="text-xs text-skaus-muted text-center">
             The recipient will detect this deposit via their scan key.
-            On-chain, this is indistinguishable from any other pool deposit.
           </p>
         </div>
       )}

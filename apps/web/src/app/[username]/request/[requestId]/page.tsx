@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { usePrivy } from '@privy-io/react-auth';
+import { Connection, PublicKey } from '@solana/web3.js';
 import {
   getPaymentRequest,
   lookupName,
@@ -14,6 +14,7 @@ import { decodePubkey, isMockPubkey } from '@/lib/keys';
 import { config } from '@/lib/config';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
+import Link from 'next/link';
 
 interface RequestPageProps {
   params: { username: string; requestId: string };
@@ -21,8 +22,12 @@ interface RequestPageProps {
 
 export default function PaymentRequestPage({ params }: RequestPageProps) {
   const { username, requestId } = params;
-  const { connected, publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { authenticated, user, login } = usePrivy();
+
+  const walletAddress = user?.wallet?.address;
+  const connection = new Connection(
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  );
 
   const [request, setRequest] = useState<PaymentRequestData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,7 +44,7 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
   }, [requestId]);
 
   const handlePay = useCallback(async () => {
-    if (!publicKey || !signTransaction || !request) return;
+    if (!walletAddress || !request) return;
 
     setTxStatus('preparing');
     setError(null);
@@ -74,6 +79,9 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
         };
       }
 
+      const publicKey = new PublicKey(walletAddress);
+      const signTransaction = async (tx: any) => tx;
+
       const result = await executeDeposit(
         connection,
         publicKey,
@@ -106,25 +114,26 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
       setError(err.message || 'Payment failed');
       setTxStatus('error');
     }
-  }, [publicKey, signTransaction, connection, request, username, requestId]);
+  }, [walletAddress, connection, request, username, requestId]);
 
   if (loading) {
     return (
       <main className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-skaus-muted">Loading request...</div>
+        <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
 
   if (!request) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen px-6">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold text-white">Request Not Found</h1>
+      <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
+        <div className="absolute inset-0 grid-bg" />
+        <div className="relative z-10 text-center space-y-4">
+          <h1 className="text-display-sm text-white">Request Not Found</h1>
           <p className="text-skaus-muted">{error || 'This payment request does not exist.'}</p>
-          <a href={`/${username}`} className="text-skaus-primary hover:underline text-sm">
+          <Link href={`/${username}`} className="text-skaus-primary hover:underline text-sm font-semibold">
             Visit @{username}
-          </a>
+          </Link>
         </div>
       </main>
     );
@@ -136,26 +145,29 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
   const canPay = !isExpired && !isPaid && !isCancelled;
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen px-6">
-      <div className="w-full max-w-md space-y-6">
+    <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
+      <div className="absolute inset-0 grid-bg" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+
+      <div className="relative z-10 w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <p className="text-sm text-skaus-muted uppercase tracking-wide">Payment Request</p>
-          <h1 className="text-3xl font-bold">
+          <p className="section-label">Payment Request</p>
+          <h1 className="text-display-md">
             <span className="gradient-text">@{username}</span>
           </h1>
         </div>
 
         <div className="glass-card p-6 space-y-5">
           <div className="text-center">
-            <p className="text-4xl font-bold text-white">
+            <p className="text-display-md font-black text-white">
               {request.token === 'SOL' ? '◎' : '$'}{request.amount}
             </p>
             <p className="text-sm text-skaus-muted mt-1">{request.token}</p>
           </div>
 
           {request.memo && (
-            <div className="p-3 bg-skaus-dark rounded-lg">
-              <p className="text-xs text-skaus-muted uppercase mb-1">Memo</p>
+            <div className="p-3 bg-skaus-darker rounded-lg border border-skaus-border">
+              <p className="section-label mb-1">Memo</p>
               <p className="text-sm text-white">{request.memo}</p>
             </div>
           )}
@@ -174,18 +186,20 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
           {canPay && (
             <>
-              {!connected ? (
+              {!authenticated ? (
                 <div className="flex flex-col items-center space-y-4">
                   <p className="text-skaus-muted text-sm">Connect your wallet to pay</p>
-                  <WalletMultiButton />
+                  <button onClick={() => login()} className="btn-primary text-xs py-2.5 px-6">
+                    LOGIN TO PAY
+                  </button>
                 </div>
               ) : txStatus === 'idle' || txStatus === 'error' ? (
                 <>
                   <button
                     onClick={handlePay}
-                    className="w-full py-3 rounded-xl bg-skaus-primary hover:bg-skaus-primary/90 text-white font-semibold transition-all hover:shadow-lg hover:shadow-skaus-primary/25"
+                    className="w-full btn-primary py-3.5 rounded-xl"
                   >
-                    Pay {request.token === 'SOL' ? '◎' : '$'}{request.amount} {request.token}
+                    PAY {request.token === 'SOL' ? '◎' : '$'}{request.amount} {request.token}
                   </button>
                   {error && (
                     <div className="p-3 bg-skaus-error/10 border border-skaus-error/30 rounded-lg text-sm text-skaus-error">
@@ -207,9 +221,7 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
         <div className="text-center">
           <p className="text-xs text-skaus-muted">
-            Powered by{' '}
-            <a href="/" className="text-skaus-primary hover:underline">SKAUS</a>
-            {' '}— private payments on Solana
+            Powered by <Link href="/" className="text-skaus-primary hover:underline font-semibold">SKAUS</Link> — private payments on Solana
           </p>
         </div>
       </div>
@@ -219,16 +231,16 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-    partial: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+    pending: 'bg-skaus-warning/10 text-skaus-warning border-skaus-warning/30',
+    partial: 'bg-skaus-primary/10 text-skaus-primary border-skaus-primary/30',
     paid: 'bg-skaus-success/10 text-skaus-success border-skaus-success/30',
     expired: 'bg-skaus-muted/10 text-skaus-muted border-skaus-muted/30',
     cancelled: 'bg-skaus-error/10 text-skaus-error border-skaus-error/30',
   };
 
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[status] || styles.pending}`}>
-      {status.toUpperCase()}
+    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${styles[status] || styles.pending}`}>
+      {status}
     </span>
   );
 }

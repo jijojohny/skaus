@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { usePrivy } from '@privy-io/react-auth';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { lookupName, fetchProfile, type NameLookupResult } from '@/lib/gateway';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
@@ -11,6 +11,7 @@ import { decodePubkey, isMockPubkey } from '@/lib/keys';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 import type { CompressedProfile } from '@skaus/types';
+import Link from 'next/link';
 
 interface ProfilePageProps {
   params: { username: string };
@@ -62,33 +63,18 @@ const DEMO_PROFILES: Record<string, CompressedProfile> = {
     version: 1,
     updatedAt: Date.now(),
   },
-  bob: {
-    displayName: 'Bob Developer',
-    bio: 'Open-source Solana developer',
-    avatarUri: '',
-    links: [
-      { platform: 'github', url: 'https://github.com/bob', verified: true },
-      { platform: 'website', url: 'https://bob.dev', verified: false },
-    ],
-    paymentConfig: {
-      acceptedTokens: ['USDC'],
-      suggestedAmounts: [10, 25, 100],
-      customAmountEnabled: true,
-      thankYouMessage: 'Appreciate it!',
-    },
-    tiers: [],
-    gatedContent: [],
-    version: 1,
-    updatedAt: Date.now(),
-  },
 };
 
 const MOCK_PROFILES: Record<string, CompressedProfile> = DEMO_MODE ? DEMO_PROFILES : {};
 
 export default function ProfilePage({ params }: ProfilePageProps) {
   const { username } = params;
-  const { connected, publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { authenticated, user } = usePrivy();
+
+  const walletAddress = user?.wallet?.address;
+  const connection = new Connection(
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  );
 
   const [nameData, setNameData] = useState<NameLookupResult | null>(null);
   const [profile, setProfile] = useState<CompressedProfile | null>(null);
@@ -139,7 +125,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   }, [username]);
 
   const handleDeposit = useCallback(async (amount: bigint, token: string) => {
-    if (!publicKey || !signTransaction) return;
+    if (!walletAddress) return;
 
     setTxStatus('preparing');
     setError(null);
@@ -165,6 +151,9 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         recipientMeta = { scanPubkey: keys.scanPubkey, spendPubkey: keys.spendPubkey, version: 1 };
       }
 
+      const publicKey = new PublicKey(walletAddress);
+      const signTransaction = async (tx: any) => tx;
+
       const result = await executeDeposit(
         connection,
         publicKey,
@@ -184,12 +173,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       setError(err.message || 'Transaction failed');
       setTxStatus('error');
     }
-  }, [publicKey, signTransaction, connection, nameData]);
+  }, [walletAddress, connection, nameData]);
 
   if (loading) {
     return (
       <main className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-skaus-muted">Loading profile...</div>
+        <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
@@ -197,26 +186,30 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   if (notFound) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen px-6">
-        <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold text-white">@{username}</h1>
+        <div className="absolute inset-0 grid-bg" />
+        <div className="relative z-10 text-center space-y-4">
+          <h1 className="text-display-md text-white">@{username}</h1>
           <p className="text-skaus-muted">This name is not registered yet.</p>
-          <a href="/" className="text-skaus-primary hover:underline text-sm">
+          <Link href="/" className="text-skaus-primary hover:underline text-sm font-semibold">
             Go to SKAUS home
-          </a>
+          </Link>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col items-center min-h-screen px-6 py-12">
-      <div className="w-full max-w-md space-y-6">
+    <main className="relative flex flex-col items-center min-h-screen px-6 py-12">
+      <div className="absolute inset-0 grid-bg" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+
+      <div className="relative z-10 w-full max-w-md space-y-6">
         {/* Avatar + Identity */}
         <div className="text-center space-y-3">
-          <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-skaus-primary to-skaus-secondary flex items-center justify-center text-3xl font-bold text-white">
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-skaus-primary/20 border border-skaus-primary/30 flex items-center justify-center text-3xl font-black text-skaus-primary">
             {(profile?.displayName || username)[0].toUpperCase()}
           </div>
-          <h1 className="text-2xl font-bold text-white">{profile?.displayName || username}</h1>
+          <h1 className="text-display-sm text-white">{profile?.displayName || username}</h1>
           <p className="text-sm text-skaus-muted max-w-xs mx-auto">{profile?.bio}</p>
         </div>
 
@@ -229,7 +222,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 glass-card text-sm text-skaus-text hover:text-white hover:border-skaus-primary/50 transition-all flex items-center gap-1.5"
+                className="px-4 py-2 glass-card-hover text-sm text-skaus-text flex items-center gap-1.5"
               >
                 <PlatformIcon platform={link.platform} />
                 <span className="capitalize">{link.platform}</span>
@@ -242,15 +235,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         {/* Payment Section */}
         {!showPayment ? (
           <div className="space-y-4">
-            {/* Quick Pay Button */}
             <button
               onClick={() => setShowPayment(true)}
-              className="w-full py-3.5 rounded-xl bg-skaus-primary hover:bg-skaus-primary/90 text-white font-semibold transition-all hover:shadow-lg hover:shadow-skaus-primary/25"
+              className="w-full btn-primary py-3.5 rounded-xl text-sm"
             >
-              Pay @{username}
+              PAY @{username.toUpperCase()}
             </button>
 
-            {/* Suggested Amounts */}
             {profile?.paymentConfig?.suggestedAmounts && (
               <div className="flex gap-2 justify-center">
                 {profile.paymentConfig.suggestedAmounts.map((amt) => (
@@ -260,7 +251,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                       setShowPayment(true);
                       setSelectedTier(`${amt}`);
                     }}
-                    className="px-4 py-2 bg-skaus-dark rounded-lg text-sm text-skaus-muted hover:text-white hover:bg-skaus-border transition-all"
+                    className="px-4 py-2 bg-skaus-darker rounded-lg text-sm text-skaus-muted hover:text-white hover:bg-skaus-border transition-all border border-skaus-border"
                   >
                     ${amt}
                   </button>
@@ -269,9 +260,9 @@ export default function ProfilePage({ params }: ProfilePageProps) {
             )}
           </div>
         ) : (
-          <div className="glass-card p-6 space-y-4">
+          <div className="glass-card p-6 space-y-4 animate-scale-in">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Send Payment</h2>
+              <h2 className="text-lg font-bold text-white">Send Payment</h2>
               <button
                 onClick={() => { setShowPayment(false); setTxStatus('idle'); setError(null); }}
                 className="text-skaus-muted hover:text-white text-sm"
@@ -280,10 +271,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
               </button>
             </div>
 
-            {!connected ? (
+            {!authenticated ? (
               <div className="flex flex-col items-center space-y-4 py-4">
                 <p className="text-skaus-muted text-sm">Connect your wallet to pay</p>
-                <WalletMultiButton />
+                <Link href={`/login?redirect=/${username}`} className="btn-primary text-xs py-2 px-6">
+                  LOGIN
+                </Link>
               </div>
             ) : txStatus === 'idle' || txStatus === 'error' ? (
               <>
@@ -314,9 +307,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         {/* Tiers */}
         {profile?.tiers && profile.tiers.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-skaus-muted uppercase tracking-wide text-center">
-              Support Tiers
-            </h2>
+            <h2 className="section-label text-center">SUPPORT TIERS</h2>
             {profile.tiers.map((tier) => (
               <button
                 key={tier.id}
@@ -324,16 +315,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                   setShowPayment(true);
                   setSelectedTier(`${tier.amount}`);
                 }}
-                className="w-full glass-card p-4 text-left hover:border-skaus-primary/50 transition-all group"
+                className="w-full glass-card-hover p-4 text-left group"
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{tier.gateType === 'recurring-hint' ? '★' : '☆'}</span>
-                      <span className="font-semibold text-white group-hover:text-skaus-primary transition-colors">
-                        {tier.name}
-                      </span>
-                    </div>
+                    <span className="font-bold text-white group-hover:text-skaus-primary transition-colors">
+                      {tier.name}
+                    </span>
                     <ul className="text-xs text-skaus-muted space-y-0.5">
                       {tier.benefits.map((b, i) => (
                         <li key={i}>• {b}</li>
@@ -341,7 +329,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
                     </ul>
                   </div>
                   <div className="text-right">
-                    <span className="text-lg font-bold text-white">${tier.amount}</span>
+                    <span className="text-lg font-black text-white">${tier.amount}</span>
                     <span className="block text-xs text-skaus-muted">
                       {tier.gateType === 'recurring-hint' ? '/mo' : 'one-time'}
                     </span>
@@ -355,12 +343,12 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         {/* Gated Content */}
         {profile?.gatedContent && profile.gatedContent.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-skaus-muted uppercase tracking-wide text-center">
-              Exclusive Content
-            </h2>
+            <h2 className="section-label text-center">EXCLUSIVE CONTENT</h2>
             {profile.gatedContent.map((item) => (
               <div key={item.contentId} className="glass-card p-4 flex items-center gap-3 opacity-75">
-                <span className="text-xl">🔒</span>
+                <svg className="w-5 h-5 text-skaus-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
                 <div>
                   <p className="text-sm font-medium text-white">{item.previewText}</p>
                   <p className="text-xs text-skaus-muted">Unlock by supporting this creator</p>
@@ -373,12 +361,11 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         {/* Footer */}
         <div className="text-center pt-4 space-y-2">
           <p className="text-xs text-skaus-muted">
-            Privacy-preserving payments powered by{' '}
-            <a href="/" className="text-skaus-primary hover:underline">SKAUS</a>
+            Powered by <Link href="/" className="text-skaus-primary hover:underline font-semibold">SKAUS</Link>
           </p>
           <div className="flex justify-center gap-4 text-xs text-skaus-muted">
             <span>0% deposit fee</span>
-            <span>•</span>
+            <span className="text-skaus-border">|</span>
             <span>0.3% withdrawal fee</span>
           </div>
         </div>

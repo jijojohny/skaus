@@ -31,12 +31,21 @@ test-ledger/
 # ===========================================================================
 .env
 .env.*
-!.env.example
+# Allow committed env templates (any path, including .env.*.example)
+!.env*.example
 config/.env.*
+
+# Tooling that often holds local secrets / tokens
+.envrc
+.vercel/
+.netrc
+application_default_credentials.json
 
 # Wallet / keypair files
 *.key
 *.pem
+*.p12
+*.pfx
 **/id.json
 *keypair*.json
 wallet.json

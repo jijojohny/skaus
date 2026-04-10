@@ -39,17 +39,17 @@ export function DepositForm({ onSubmit }: DepositFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
-        <label className="text-sm font-medium text-skaus-text">Token</label>
+        <label className="section-label">Token</label>
         <div className="flex gap-2">
           {(['USDC', 'SOL'] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setToken(t)}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wider transition-all ${
                 token === t
                   ? 'bg-skaus-primary text-white'
-                  : 'bg-skaus-dark text-skaus-muted hover:text-white'
+                  : 'bg-skaus-darker text-skaus-muted hover:text-white border border-skaus-border'
               }`}
             >
               {t}
@@ -59,7 +59,7 @@ export function DepositForm({ onSubmit }: DepositFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium text-skaus-text">Amount</label>
+        <label className="section-label">Amount</label>
         <div className="relative">
           <input
             type="number"
@@ -68,9 +68,9 @@ export function DepositForm({ onSubmit }: DepositFormProps) {
             placeholder="0.00"
             min="0"
             step="0.01"
-            className="w-full px-4 py-3 bg-skaus-dark border border-skaus-border rounded-lg text-2xl font-mono text-white placeholder:text-skaus-muted/50 focus:outline-none focus:border-skaus-primary transition-colors"
+            className="input-field text-2xl font-mono pr-16"
           />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-skaus-muted font-medium">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-skaus-muted font-bold text-sm uppercase">
             {token}
           </span>
         </div>
@@ -82,7 +82,7 @@ export function DepositForm({ onSubmit }: DepositFormProps) {
             key={label}
             type="button"
             onClick={() => selectQuickAmount(value)}
-            className="flex-1 py-2 bg-skaus-dark rounded-lg text-sm text-skaus-muted hover:text-white hover:bg-skaus-border transition-all"
+            className="flex-1 py-2 bg-skaus-darker rounded-lg text-sm text-skaus-muted hover:text-white hover:bg-skaus-border transition-all border border-skaus-border font-semibold"
           >
             {label}
           </button>
@@ -92,14 +92,13 @@ export function DepositForm({ onSubmit }: DepositFormProps) {
       <button
         type="submit"
         disabled={!amount || loading}
-        className="w-full py-3 rounded-xl bg-skaus-primary hover:bg-skaus-primary/90 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-skaus-primary/25"
+        className="w-full btn-primary py-3.5 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed"
       >
-        {loading ? 'Processing...' : `Send ${amount || '0'} ${token}`}
+        {loading ? 'PROCESSING...' : `SEND ${amount || '0'} ${token}`}
       </button>
 
       <p className="text-xs text-skaus-muted text-center leading-relaxed">
         Your payment will be split into fixed-tier deposits for maximum privacy.
-        The recipient can withdraw to any wallet address.
       </p>
     </form>
   );
