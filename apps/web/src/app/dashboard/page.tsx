@@ -92,6 +92,7 @@ export default function DashboardPage() {
 
   const verifyNameFromGateway = async (address: string) => {
     try {
+      // Fast path: verify the locally cached name still belongs to this wallet
       const savedName = localStorage.getItem('skaus_username');
       if (savedName) {
         const res = await fetch(`${config.gatewayUrl}/names/${savedName}`);
@@ -103,6 +104,19 @@ export default function DashboardPage() {
             return;
           }
         }
+      }
+    } catch {}
+
+    // Fallback: resolve username from the gateway (covers new devices / cleared storage)
+    try {
+      const result = await lookupByAuthority(address);
+      const username = result.names[0]?.username;
+      if (username) {
+        setRegisteredName(username);
+        try {
+          localStorage.setItem('skaus_username', username);
+          localStorage.setItem('skaus_wallet', address);
+        } catch {}
       }
     } catch {}
   };

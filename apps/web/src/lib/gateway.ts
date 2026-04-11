@@ -127,7 +127,7 @@ export async function checkNameAvailability(username: string): Promise<{ availab
 
 export async function lookupByAuthority(address: string): Promise<{
   registered: boolean;
-  names: Array<{ pda: string; nameHash: string; scanPubkey: string; spendPubkey: string }>;
+  names: Array<{ pda: string; nameHash: string; scanPubkey: string; spendPubkey: string; username: string | null }>;
 }> {
   const res = await fetch(`${config.gatewayUrl}/names/by-authority/${address}`);
   if (!res.ok) return { registered: false, names: [] };

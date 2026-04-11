@@ -1,10 +1,15 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
+import { useWallets, useSignMessage } from '@privy-io/react-auth/solana';
 import { lookupByAuthority } from '@/lib/gateway';
+import { deriveKeysFromPinAndSignature, privateKeyToPublicKey } from '@/lib/onboarding';
+import bs58 from 'bs58';
 import Link from 'next/link';
+
+type LoginStep = 'auth' | 'checking' | 'pin' | 'verifying';
 
 export default function LoginPage() {
   return (
@@ -22,10 +27,22 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { ready, authenticated, user, login } = usePrivy();
-  const [checking, setChecking] = useState(false);
+  const { wallets } = useWallets();
+  const { signMessage } = useSignMessage();
 
   const redirect = searchParams.get('redirect');
   const name = searchParams.get('name');
+
+  const [step, setStep] = useState<LoginStep>('auth');
+  const [lookupResult, setLookupResult] = useState<{
+    names: Array<{ pda: string; nameHash: string; scanPubkey: string; spendPubkey: string; username: string | null }>;
+  } | null>(null);
+  const [pin, setPin] = useState<string[]>(['', '', '', '', '', '']);
+  const [pinError, setPinError] = useState('');
+  const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const pinString = pin.join('');
+  const pinComplete = pinString.length === 6;
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -33,26 +50,102 @@ function LoginContent() {
     const walletAddress = user?.wallet?.address;
     if (!walletAddress) return;
 
-    if (redirect) {
-      const fullRedirect = name ? `${redirect}?name=${name}` : redirect;
-      router.push(fullRedirect);
-      return;
-    }
-
-    setChecking(true);
+    setStep('checking');
     lookupByAuthority(walletAddress)
       .then((result) => {
         if (result.registered) {
-          router.push('/dashboard');
+          setLookupResult(result);
+          setStep('pin');
+          setTimeout(() => pinRefs.current[0]?.focus(), 100);
         } else {
-          router.push('/onboarding');
+          if (redirect) {
+            const fullRedirect = name ? `${redirect}?name=${name}` : redirect;
+            router.push(fullRedirect);
+          } else {
+            router.push('/onboarding');
+          }
         }
       })
       .catch(() => {
         router.push('/onboarding');
-      })
-      .finally(() => setChecking(false));
+      });
   }, [ready, authenticated, user, router, redirect, name]);
+
+  const handlePinInput = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newPin = [...pin];
+    newPin[index] = value.slice(-1);
+    setPin(newPin);
+    setPinError('');
+
+    if (value && index < 5) {
+      pinRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePinKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !pin[index] && index > 0) {
+      const newPin = [...pin];
+      newPin[index - 1] = '';
+      setPin(newPin);
+      pinRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyPin = useCallback(async () => {
+    if (!pinComplete || !lookupResult) return;
+
+    const wallet = wallets[0];
+    if (!wallet) return;
+
+    setStep('verifying');
+    setPinError('');
+
+    try {
+      const walletAddress = wallet.address;
+      const messageText = `SKAUS | Deterministic Meta Keys | Solana\nPIN: ${pinString}\nWallet: ${walletAddress}`;
+      const messageBytes = new TextEncoder().encode(messageText);
+
+      let signature: Uint8Array;
+      try {
+        const result = await signMessage({ message: messageBytes, wallet });
+        signature = result.signature;
+      } catch (err: any) {
+        if (err?.message?.includes('rejected') || err?.message?.includes('cancelled')) {
+          setStep('pin');
+          setPinError('Signature was rejected. Please approve to continue.');
+          return;
+        }
+        throw err;
+      }
+
+      const { scanPrivkey } = deriveKeysFromPinAndSignature(pinString, signature);
+      const derivedScanPubkey = bs58.encode(privateKeyToPublicKey(scanPrivkey));
+      const onChainScanPubkey = lookupResult.names[0].scanPubkey;
+
+      if (derivedScanPubkey === onChainScanPubkey) {
+        const username = lookupResult.names[0]?.username;
+        if (username) {
+          try {
+            localStorage.setItem('skaus_username', username);
+            localStorage.setItem('skaus_wallet', walletAddress);
+          } catch {}
+        }
+        const destination = redirect ? (name ? `${redirect}?name=${name}` : redirect) : '/dashboard';
+        router.push(destination);
+      } else {
+        setPin(['', '', '', '', '', '']);
+        setStep('pin');
+        setPinError('Incorrect PIN. Please try again.');
+        setTimeout(() => pinRefs.current[0]?.focus(), 100);
+      }
+    } catch (err: any) {
+      setPin(['', '', '', '', '', '']);
+      setStep('pin');
+      setPinError(err.message || 'Verification failed. Please try again.');
+      setTimeout(() => pinRefs.current[0]?.focus(), 100);
+    }
+  }, [pinComplete, pinString, lookupResult, wallets, signMessage, router, redirect, name]);
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
@@ -82,14 +175,9 @@ function LoginContent() {
           </p>
         </div>
 
-        {checking ? (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-skaus-muted">Checking your account...</p>
-          </div>
-        ) : (
+        {/* Auth step */}
+        {step === 'auth' && (
           <>
-            {/* Auth Buttons */}
             <div className="space-y-3">
               <button
                 onClick={() => login({ loginMethods: ['google'] })}
@@ -132,6 +220,70 @@ function LoginContent() {
               Protected by <span className="text-skaus-primary font-semibold">Privy</span>
             </p>
           </>
+        )}
+
+        {/* Checking registration */}
+        {step === 'checking' && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-skaus-muted">Checking your account...</p>
+          </div>
+        )}
+
+        {/* PIN entry */}
+        {(step === 'pin' || step === 'verifying') && (
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <h2 className="text-display-sm">Enter Your PIN</h2>
+              <p className="text-sm text-skaus-muted">
+                Enter your 6-digit PIN to access your account.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex items-center justify-center gap-2">
+                {pin.map((digit, i) => (
+                  <div key={i} className="flex items-center">
+                    <input
+                      ref={(el) => { pinRefs.current[i] = el; }}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      disabled={step === 'verifying'}
+                      onChange={(e) => handlePinInput(i, e.target.value)}
+                      onKeyDown={(e) => handlePinKeyDown(i, e)}
+                      className={`w-12 h-14 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
+                        digit
+                          ? 'border-skaus-primary text-white'
+                          : 'border-skaus-border text-skaus-muted'
+                      } focus:border-skaus-primary focus:ring-1 focus:ring-skaus-primary/30`}
+                    />
+                    {i === 2 && <span className="mx-1.5 text-skaus-muted font-bold">-</span>}
+                  </div>
+                ))}
+              </div>
+
+              {pinError && (
+                <p className="text-xs text-skaus-error text-center">{pinError}</p>
+              )}
+
+              <button
+                onClick={handleVerifyPin}
+                disabled={!pinComplete || step === 'verifying'}
+                className="w-full btn-primary py-3.5 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {step === 'verifying' ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'UNLOCK'
+                )}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

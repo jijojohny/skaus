@@ -3,6 +3,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { config } from '../config';
 import { resolveUsername } from '../services/name-resolver';
+import { prisma } from '../db';
 
 let connection: Connection;
 
@@ -137,6 +138,17 @@ export async function nameRoutes(app: FastifyInstance) {
           nameHash[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
         }
 
+        // Persist username→nameHash early so returning users can resolve their
+        // link on any device, even before the indexer picks up the on-chain tx.
+        try {
+          const nameHashB58 = bs58.encode(nameHash);
+          await prisma.profile.upsert({
+            where: { username },
+            update: { nameHash: nameHashB58 },
+            create: { username, nameHash: nameHashB58 },
+          });
+        } catch {}
+
         const [configPda] = PublicKey.findProgramAddressSync(
           [Buffer.from('registry_config')],
           programId,
@@ -253,13 +265,20 @@ export async function nameRoutes(app: FastifyInstance) {
           return reply.send({ registered: false, names: [] });
         }
 
-        const names = accounts.map((acc) => {
+        const names = await Promise.all(accounts.map(async (acc) => {
           const data = acc.account.data;
-          const nameHash = bs58.encode(data.subarray(40, 72));
+          const nameHashB58 = bs58.encode(data.subarray(40, 72));
           const scanPubkey = bs58.encode(data.subarray(72, 104));
           const spendPubkey = bs58.encode(data.subarray(104, 136));
-          return { pda: acc.pubkey.toBase58(), nameHash, scanPubkey, spendPubkey };
-        });
+
+          let username: string | null = null;
+          try {
+            const profile = await prisma.profile.findUnique({ where: { nameHash: nameHashB58 } });
+            username = profile?.username ?? null;
+          } catch {}
+
+          return { pda: acc.pubkey.toBase58(), nameHash: nameHashB58, scanPubkey, spendPubkey, username };
+        }));
 
         return reply.send({ registered: true, names });
       } catch (err: any) {
