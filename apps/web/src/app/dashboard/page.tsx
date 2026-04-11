@@ -49,10 +49,13 @@ export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   const [registeredName, setRegisteredName] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [scanPin, setScanPin] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [modalPin, setModalPin] = useState<string[]>(['', '', '', '', '', '']);
+  const [modalPinError, setModalPinError] = useState('');
 
   const scanKeyRef = useRef<Uint8Array | null>(null);
+  const modalPinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const depositsRef = useRef<DashboardDeposit[]>([]);
   depositsRef.current = deposits;
 
@@ -89,6 +92,51 @@ export default function DashboardPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showQrModal]);
+
+  useEffect(() => {
+    if (!showScanModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !scanning) {
+        setShowScanModal(false);
+        setModalPin(['', '', '', '', '', '']);
+        setModalPinError('');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showScanModal, scanning]);
+
+  const handleModalPinInput = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const next = [...modalPin];
+    next[index] = value.slice(-1);
+    setModalPin(next);
+    setModalPinError('');
+    if (value && index < 5) modalPinRefs.current[index + 1]?.focus();
+  };
+
+  const handleModalPinKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !modalPin[index] && index > 0) {
+      const next = [...modalPin];
+      next[index - 1] = '';
+      setModalPin(next);
+      modalPinRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleScanFromModal = async () => {
+    const pin = modalPin.join('');
+    if (pin.length !== 6) {
+      setModalPinError('Enter your full 6-digit PIN.');
+      return;
+    }
+    setModalPinError('');
+    const success = await scanDeposits(pin);
+    if (success) {
+      setShowScanModal(false);
+      setModalPin(['', '', '', '', '', '']);
+    }
+  };
 
   const verifyNameFromGateway = async (address: string) => {
     try {
@@ -137,17 +185,12 @@ export default function DashboardPage() {
     return scanPrivkey;
   }, [signMessage, wallet]);
 
-  const scanDeposits = useCallback(async () => {
+  const scanDeposits = useCallback(async (pin: string): Promise<boolean> => {
     setScanning(true);
     setScanError(null);
 
     try {
-      if (!scanPin) {
-        setScanError('Enter the PIN you used during onboarding.');
-        setScanning(false);
-        return;
-      }
-      const scanPrivkey = await deriveScanKey(scanPin);
+      const scanPrivkey = await deriveScanKey(pin);
 
       const relayStatus = await getRelayStatus().catch(() => null);
       setRelayActive(relayStatus?.active ?? null);
@@ -172,16 +215,18 @@ export default function DashboardPage() {
       if (entries.length === 0) {
         setScanError('No deposits found. Make sure someone has sent you a payment first.');
       }
+      return true;
     } catch (err: any) {
       if (err.message?.includes('rejected') || err.message?.includes('cancelled')) {
         setScanError('Signature required to derive your scan key.');
       } else {
         setScanError(err.message || 'Failed to scan. Is the gateway running?');
       }
+      return false;
     } finally {
       setScanning(false);
     }
-  }, [deriveScanKey, scanPin, scanMode, connection]);
+  }, [deriveScanKey, scanMode, connection]);
 
   const fetchMerkleRootHex = useCallback(async (): Promise<string> => {
     const tokenMint = new PublicKey(config.tokenMint);
@@ -328,19 +373,10 @@ export default function DashboardPage() {
                 Relay {relayActive ? 'Active' : 'Offline'}
               </span>
             )}
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="PIN"
-              value={scanPin}
-              onChange={(e) => { setScanPin(e.target.value); scanKeyRef.current = null; }}
-              className="w-16 px-2 py-2 rounded-lg bg-skaus-darker border border-skaus-border text-white text-xs text-center font-mono placeholder:text-skaus-muted"
-            />
             <button
               type="button"
-              onClick={scanDeposits}
-              disabled={scanning || !scanPin}
+              onClick={() => { setScanError(null); setShowScanModal(true); setTimeout(() => modalPinRefs.current[0]?.focus(), 100); }}
+              disabled={scanning}
               className="flex items-center gap-2 px-4 py-2 bg-skaus-primary hover:bg-skaus-primary-hover text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
             >
               <svg
@@ -383,10 +419,10 @@ export default function DashboardPage() {
                 </svg>
               </div>
               <button
-                onClick={scanDeposits}
-                disabled={scanning || !scanPin}
+                onClick={() => { setScanError(null); setShowScanModal(true); setTimeout(() => modalPinRefs.current[0]?.focus(), 100); }}
+                disabled={scanning}
                 className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-30"
-                title="Refresh balances (enter PIN first)"
+                title="Scan for deposits"
               >
                 <svg className={`w-4 h-4 text-skaus-muted ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
@@ -718,6 +754,90 @@ export default function DashboardPage() {
           </div>
         </div>
       </DashboardShell>
+
+      {/* Scan PIN modal */}
+      {showScanModal && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => { if (!scanning) { setShowScanModal(false); setModalPin(['', '', '', '', '', '']); setModalPinError(''); } }}
+          role="presentation"
+        >
+          <div
+            className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-sm w-full space-y-5 animate-scale-in shadow-xl"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="scan-modal-title"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 id="scan-modal-title" className="text-lg font-bold">Scan for deposits</h3>
+                <p className="text-xs text-skaus-muted mt-0.5">Enter your PIN to derive your scan key.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowScanModal(false); setModalPin(['', '', '', '', '', '']); setModalPinError(''); }}
+                disabled={scanning}
+                className="p-1 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-2">
+              {modalPin.map((digit, i) => (
+                <div key={i} className="flex items-center">
+                  <input
+                    ref={el => { modalPinRefs.current[i] = el; }}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    disabled={scanning}
+                    onChange={e => handleModalPinInput(i, e.target.value)}
+                    onKeyDown={e => handleModalPinKeyDown(i, e)}
+                    onKeyUp={e => { if (e.key === 'Enter' && modalPin.join('').length === 6) void handleScanFromModal(); }}
+                    className={`w-11 h-13 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
+                      digit ? 'border-skaus-primary text-white' : 'border-skaus-border text-skaus-muted'
+                    } focus:border-skaus-primary focus:ring-1 focus:ring-skaus-primary/30`}
+                  />
+                  {i === 2 && <span className="mx-1.5 text-skaus-muted font-bold">-</span>}
+                </div>
+              ))}
+            </div>
+
+            {(modalPinError || scanError) && (
+              <p className="text-xs text-skaus-error text-center">{modalPinError || scanError}</p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowScanModal(false); setModalPin(['', '', '', '', '', '']); setModalPinError(''); setScanError(null); }}
+                disabled={scanning}
+                className="flex-1 py-2.5 rounded-xl border border-skaus-border text-sm text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleScanFromModal()}
+                disabled={modalPin.join('').length !== 6 || scanning}
+                className="flex-1 py-2.5 rounded-xl bg-skaus-primary hover:bg-skaus-primary-hover text-white text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {scanning ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Scanning...
+                  </>
+                ) : 'Scan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QR code for personalised pay link */}
       {showQrModal && registeredName && (
