@@ -23,8 +23,9 @@ async function buildServer() {
   });
 
   await app.register(cors, {
-    origin: config.corsOrigins,
-    methods: ['GET', 'POST', 'PUT'],
+    origin: config.corsOrigins.length === 1 && config.corsOrigins[0] === '*' ? true : config.corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
   });
 
   await app.register(rateLimit, {
