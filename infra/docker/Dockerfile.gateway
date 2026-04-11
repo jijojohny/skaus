@@ -30,5 +30,4 @@ RUN pnpm install --frozen-lockfile --prod
 
 EXPOSE 3001
 
-# Run migrations then start the server
 CMD ["sh", "-c", "cd apps/gateway && npx prisma migrate deploy && cd /app && node apps/gateway/dist/server.js"]
