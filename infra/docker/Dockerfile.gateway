@@ -24,8 +24,7 @@ COPY --from=builder /app/packages/ packages/
 COPY --from=builder /app/apps/gateway/dist apps/gateway/dist
 COPY --from=builder /app/apps/gateway/package.json apps/gateway/
 COPY --from=builder /app/apps/gateway/prisma apps/gateway/prisma
-# Copy generated Prisma client
-COPY --from=builder /app/apps/gateway/node_modules/.prisma apps/gateway/node_modules/.prisma
+COPY --from=builder /app/apps/gateway/generated apps/gateway/generated
 
 RUN pnpm install --frozen-lockfile --prod
 

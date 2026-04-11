@@ -13,6 +13,7 @@ target/
 .next/
 out/
 *.tsbuildinfo
+apps/gateway/generated/
 
 # ===========================================================================
 # Anchor / Solana
