@@ -91,6 +91,23 @@
       linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   }
 
+  /* Public payment link — light shell, red accents */
+  .pay-link-page {
+    @apply min-h-screen antialiased;
+    background-color: #f4f4f5;
+    color: #171717;
+  }
+
+  .pay-link-dot-panel {
+    background-color: #ffffff;
+    background-image: radial-gradient(
+      circle at center,
+      rgba(255, 45, 45, 0.14) 1px,
+      transparent 1px
+    );
+    background-size: 22px 22px;
+  }
+
   .noise-bg {
     position: relative;
   }

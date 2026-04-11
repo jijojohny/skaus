@@ -10,6 +10,7 @@ import { scanForDeposits, scanDepositsOnChain, type ScannedDeposit } from '@/lib
 import { executeWithdraw } from '@/lib/withdraw';
 import { config, getPublicProfileUrl } from '@/lib/config';
 import { derivePoolPda } from '@/lib/stealth';
+import { deriveKeysFromPinAndSignature } from '@/lib/onboarding';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
 import { DashboardShell } from '@/components/DashboardShell';
@@ -48,6 +49,7 @@ export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   const [registeredName, setRegisteredName] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [scanPin, setScanPin] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
 
   const scanKeyRef = useRef<Uint8Array | null>(null);
@@ -105,19 +107,17 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  const deriveScanKey = useCallback(async (): Promise<Uint8Array> => {
+  const deriveScanKey = useCallback(async (pin: string): Promise<Uint8Array> => {
     if (scanKeyRef.current) return scanKeyRef.current;
     if (!wallet) throw new Error('No wallet connected');
+    if (!pin) throw new Error('PIN is required to derive your scan key.');
 
-    const message = new TextEncoder().encode(
-      `SKAUS: Derive stealth scan key\nWallet: ${wallet.address}`,
-    );
-    const { signature: sig } = await signMessage({ message, wallet });
+    // Must match onboarding exactly: same message, same PIN-based derivation
+    const messageText = `SKAUS | Deterministic Meta Keys | Solana\nPIN: ${pin}\nWallet: ${wallet.address}`;
+    const messageBytes = new TextEncoder().encode(messageText);
+    const { signature } = await signMessage({ message: messageBytes, wallet });
 
-    const { sha256 } = await import('@noble/hashes/sha256');
-    const { hkdf } = await import('@noble/hashes/hkdf');
-    const masterSeed = sha256(sig);
-    const scanPrivkey = hkdf(sha256, masterSeed, 'skaus-v1', 'skaus-scan-key', 32);
+    const { scanPrivkey } = deriveKeysFromPinAndSignature(pin, signature);
 
     scanKeyRef.current = scanPrivkey;
     return scanPrivkey;
@@ -128,7 +128,12 @@ export default function DashboardPage() {
     setScanError(null);
 
     try {
-      const scanPrivkey = await deriveScanKey();
+      if (!scanPin) {
+        setScanError('Enter the PIN you used during onboarding.');
+        setScanning(false);
+        return;
+      }
+      const scanPrivkey = await deriveScanKey(scanPin);
 
       const relayStatus = await getRelayStatus().catch(() => null);
       setRelayActive(relayStatus?.active ?? null);
@@ -162,7 +167,7 @@ export default function DashboardPage() {
     } finally {
       setScanning(false);
     }
-  }, [deriveScanKey, scanMode, connection]);
+  }, [deriveScanKey, scanPin, scanMode, connection]);
 
   const fetchMerkleRootHex = useCallback(async (): Promise<string> => {
     const tokenMint = new PublicKey(config.tokenMint);
@@ -309,10 +314,19 @@ export default function DashboardPage() {
                 Relay {relayActive ? 'Active' : 'Offline'}
               </span>
             )}
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="PIN"
+              value={scanPin}
+              onChange={(e) => { setScanPin(e.target.value); scanKeyRef.current = null; }}
+              className="w-16 px-2 py-2 rounded-lg bg-skaus-darker border border-skaus-border text-white text-xs text-center font-mono placeholder:text-skaus-muted"
+            />
             <button
               type="button"
               onClick={scanDeposits}
-              disabled={scanning}
+              disabled={scanning || !scanPin}
               className="flex items-center gap-2 px-4 py-2 bg-skaus-primary hover:bg-skaus-primary-hover text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
             >
               <svg
@@ -356,9 +370,9 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={scanDeposits}
-                disabled={scanning}
-                className="p-2 rounded-lg hover:bg-white/5 transition-colors"
-                title="Refresh balances"
+                disabled={scanning || !scanPin}
+                className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-30"
+                title="Refresh balances (enter PIN first)"
               >
                 <svg className={`w-4 h-4 text-skaus-muted ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />

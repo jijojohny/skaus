@@ -193,19 +193,35 @@ export interface ProfileSearchResult {
 export const USDC_MINT_DEVNET = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 export const USDC_MINT_MAINNET = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
+/**
+ * Power-of-10 USDC tiers (6 decimals). Covers 0.01–10,000 USDC.
+ * Any cent-precise amount can be decomposed exactly.
+ */
 export const DEPOSIT_TIERS_USDC = [
-  10_000_000n,       // 10 USDC
-  100_000_000n,      // 100 USDC
-  1_000_000_000n,    // 1,000 USDC
-  10_000_000_000n,   // 10,000 USDC
+  10_000n,             // 0.01  USDC
+  100_000n,            // 0.1   USDC
+  1_000_000n,          // 1     USDC
+  10_000_000n,         // 10    USDC
+  100_000_000n,        // 100   USDC
+  1_000_000_000n,      // 1,000 USDC
+  10_000_000_000n,     // 10,000 USDC
 ] as const;
 
+/**
+ * Power-of-10 SOL tiers (9 decimals). Covers 0.001–100 SOL.
+ */
 export const DEPOSIT_TIERS_SOL = [
-  100_000_000n,        // 0.1 SOL
-  1_000_000_000n,      // 1 SOL
-  10_000_000_000n,     // 10 SOL
-  100_000_000_000n,    // 100 SOL
+  1_000_000n,          // 0.001 SOL
+  10_000_000n,         // 0.01  SOL
+  100_000_000n,        // 0.1   SOL
+  1_000_000_000n,      // 1     SOL
+  10_000_000_000n,     // 10    SOL
+  100_000_000_000n,    // 100   SOL
 ] as const;
+
+/** Smallest expressible deposit for each token type. */
+export const MIN_DEPOSIT_USDC = DEPOSIT_TIERS_USDC[0]; // 0.01 USDC
+export const MIN_DEPOSIT_SOL = DEPOSIT_TIERS_SOL[0];   // 0.001 SOL
 
 /**
  * Split an arbitrary amount into fixed deposit tiers (greedy from largest).
@@ -228,4 +244,27 @@ export function splitIntoTiers(amount: bigint, tiers: readonly bigint[]): bigint
   }
 
   return result;
+}
+
+/**
+ * Split an amount into tiers, returning any sub-tier remainder separately
+ * instead of throwing. Useful for validation UIs that need to show the
+ * user why an amount isn't expressible (e.g., fractional cents).
+ */
+export function splitIntoTiersWithRemainder(
+  amount: bigint,
+  tiers: readonly bigint[],
+): { deposits: bigint[]; remainder: bigint } {
+  const sorted = [...tiers].sort((a, b) => (b > a ? 1 : b < a ? -1 : 0));
+  const deposits: bigint[] = [];
+  let remaining = amount;
+
+  for (const tier of sorted) {
+    while (remaining >= tier) {
+      deposits.push(tier);
+      remaining -= tier;
+    }
+  }
+
+  return { deposits, remainder: remaining };
 }

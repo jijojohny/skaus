@@ -46,7 +46,9 @@ export async function scanForDeposits(
         status: 'available',
       });
     } catch {
-      // Decryption failed — deposit doesn't belong to us, skip
+      // Decryption failed — deposit doesn't belong to us, skip.
+      // This is normal: the scanner tries every indexed deposit
+      // and only succeeds on deposits encrypted for our scan key.
     }
   }
 

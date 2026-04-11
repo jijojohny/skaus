@@ -17,6 +17,25 @@ interface PayPageProps {
   params: { username: string };
 }
 
+function SkausMark({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden>
+      <rect width="32" height="32" rx="10" className="fill-skaus-primary" />
+      <path
+        d="M10 12c0-1.5 1.2-2.5 3-2.5 1.4 0 2.5.6 3.2 1.6.7-1 1.8-1.6 3.2-1.6 1.8 0 3 1 3 2.5 0 2.2-2.5 4-6 6.8-3.5-2.8-6-4.6-6-6.8z"
+        className="fill-white"
+      />
+      <circle cx="13" cy="12" r="1.1" className="fill-skaus-primary" />
+      <circle cx="19" cy="12" r="1.1" className="fill-skaus-primary" />
+    </svg>
+  );
+}
+
+function shortWallet(addr: string) {
+  if (addr.length <= 12) return addr;
+  return `${addr.slice(0, 4)} … ${addr.slice(-4)}`;
+}
+
 export default function PayPage({ params }: PayPageProps) {
   const { username } = params;
   const { authenticated, user, login } = usePrivy();
@@ -39,6 +58,7 @@ export default function PayPage({ params }: PayPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [payLinkData, setPayLinkData] = useState<PayLinkData | null>(null);
   const [progressText, setProgressText] = useState('');
+  const [claimDismissed, setClaimDismissed] = useState(false);
 
   useEffect(() => {
     resolvePayLink(username)
@@ -61,23 +81,19 @@ export default function PayPage({ params }: PayPageProps) {
 
       const { decodePubkey, isMockPubkey } = await import('@/lib/keys');
 
-      let recipientMeta: StealthMetaAddress;
       const meta = payLinkData?.recipientMetaAddress;
-      if (meta && !isMockPubkey(meta.scanPubkey) && !isMockPubkey(meta.spendPubkey)) {
-        recipientMeta = {
-          scanPubkey: decodePubkey(meta.scanPubkey),
-          spendPubkey: decodePubkey(meta.spendPubkey),
-          version: meta.version || 1,
-        };
-      } else {
-        const { generateStealthKeys } = await import('@skaus/crypto');
-        const keys = generateStealthKeys();
-        recipientMeta = {
-          scanPubkey: keys.scanPubkey,
-          spendPubkey: keys.spendPubkey,
-          version: 1,
-        };
+      if (!meta || isMockPubkey(meta.scanPubkey) || isMockPubkey(meta.spendPubkey)) {
+        throw new Error(
+          `@${username} hasn't set up their stealth keys yet. ` +
+          'Ask them to complete onboarding at skaus.me first.'
+        );
       }
+
+      const recipientMeta: StealthMetaAddress = {
+        scanPubkey: decodePubkey(meta.scanPubkey),
+        spendPubkey: decodePubkey(meta.spendPubkey),
+        version: meta.version || 1,
+      };
 
       const publicKey = new PublicKey(walletAddress);
 
@@ -103,66 +119,147 @@ export default function PayPage({ params }: PayPageProps) {
     }
   }, [walletAddress, connection, payLinkData, signTransaction, solWallet]);
 
+  const showForm = authenticated && (txStatus === 'idle' || txStatus === 'error');
+  const showProgress = authenticated && !showForm;
+
   return (
-    <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
-      <div className="absolute inset-0 grid-bg" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
-
-      <div className="relative z-10 w-full max-w-md space-y-8">
-        <div className="text-center space-y-2">
-          <p className="section-label">Sending to</p>
-          <h1 className="text-display-md">
-            <span className="gradient-text">@{username}</span>
-          </h1>
-          <p className="text-sm text-skaus-muted">
-            Payment is private — the link between sender and recipient is cryptographically hidden.
-          </p>
-          {payLinkData && (
-            <p className="text-xs text-skaus-muted/60 font-mono">
-              Pool: {payLinkData.pool.slice(0, 8)}... | {payLinkData.network}
-            </p>
-          )}
-        </div>
-
-        <div className="glass-card p-6 space-y-6">
-          {!authenticated ? (
-            <div className="flex flex-col items-center space-y-4 py-4">
-              <p className="text-skaus-muted text-sm">Connect your wallet to send a payment</p>
-              <button onClick={() => login()} className="btn-primary text-xs py-2.5 px-6">
-                LOGIN TO PAY
-              </button>
+    <main className="pay-link-page flex flex-col items-center px-4 pb-12 pt-8 sm:pt-10">
+      <header className="relative z-10 mb-8 flex w-full max-w-lg items-center justify-between gap-4">
+        <Link href="/" className="flex items-center gap-2.5 text-neutral-900 no-underline">
+          <SkausMark className="h-9 w-9 shrink-0 rounded-[10px] shadow-sm" />
+          <span className="text-xl font-extrabold lowercase tracking-tight">skaus</span>
+        </Link>
+        {authenticated && walletAddress ? (
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="hidden sm:inline">Connected</span>
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-skaus-primary/40 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-skaus-primary" />
+            </span>
+            <div className="flex items-center gap-1 rounded-full border-2 border-neutral-200 bg-white py-1.5 pl-2.5 pr-2 font-mono text-[11px] text-neutral-700">
+              {shortWallet(walletAddress)}
+              <span className="text-neutral-400" aria-hidden>
+                ▾
+              </span>
             </div>
-          ) : txStatus === 'idle' || txStatus === 'error' ? (
-            <>
-              <DepositForm onSubmit={handleDeposit} />
-              {error && (
-                <div className="p-3 bg-skaus-error/10 border border-skaus-error/30 rounded-lg text-sm text-skaus-error">
-                  {error}
-                </div>
-              )}
-            </>
-          ) : (
-            <TransactionStatus
-              status={txStatus === 'resolving' ? 'preparing' : txStatus}
-              signature={txSignatures[0] || null}
-              progressText={progressText}
-              allSignatures={txSignatures}
-            />
-          )}
-        </div>
+          </div>
+        ) : (
+          <span className="w-20 sm:w-32" aria-hidden />
+        )}
+      </header>
 
-        <div className="text-center space-y-2">
-          <p className="text-xs text-skaus-muted">
-            Powered by <Link href="/" className="text-skaus-primary hover:underline font-semibold">SKAUS</Link> on Solana
-          </p>
-          <div className="flex justify-center gap-4 text-xs text-skaus-muted">
-            <span>0% deposit fee</span>
-            <span className="text-skaus-border">|</span>
-            <span>0.3% withdrawal fee</span>
-            <span className="text-skaus-border">|</span>
-            <span>~$0.001 network fee</span>
+      <div className="relative z-10 w-full max-w-lg">
+        <div className="rounded-[28px] border-[5px] border-skaus-primary bg-white p-3 shadow-[0_4px_24px_rgba(0,0,0,0.06)] sm:p-4">
+          <div className="pay-link-dot-panel rounded-[22px] p-3 sm:p-5">
+            <div className="rounded-[20px] border-[3px] border-skaus-primary bg-white px-5 py-8 shadow-sm sm:px-8 sm:py-10">
+              <div className="text-center">
+                <p className="text-base font-medium text-neutral-800">Send funds to</p>
+                <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50/90 px-3 py-2 pr-4">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-200/80 text-sm font-bold text-red-800">
+                    {username.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="text-[15px] font-semibold text-red-900">@{username}</span>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                {!authenticated ? (
+                  <div className="space-y-5">
+                    <button
+                      type="button"
+                      onClick={() => login()}
+                      className="w-full rounded-2xl bg-skaus-primary py-4 text-base font-bold text-white shadow-sm transition-all hover:bg-skaus-primary-hover active:scale-[0.99]"
+                    >
+                      Connect wallet to start
+                    </button>
+                    <p className="text-center text-xs text-neutral-400">or</p>
+                    <button
+                      type="button"
+                      disabled
+                      title="Coming soon"
+                      className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-neutral-100 bg-neutral-100 py-3.5 text-[15px] font-semibold text-neutral-800 opacity-60 cursor-not-allowed"
+                    >
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2563eb] text-lg font-bold text-white">
+                        $
+                      </span>
+                      Pay from EVM chains
+                    </button>
+                  </div>
+                ) : showForm ? (
+                  <>
+                    <DepositForm onSubmit={handleDeposit} variant="paymentLink" />
+                    {error && (
+                      <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-center text-sm text-red-800">
+                        {error}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <TransactionStatus
+                    tone="light"
+                    status={
+                      (txStatus === 'resolving' ? 'preparing' : txStatus) as
+                        | 'preparing'
+                        | 'signing'
+                        | 'confirming'
+                        | 'done'
+                        | 'error'
+                    }
+                    signature={txSignatures[0] || null}
+                    progressText={progressText}
+                    allSignatures={txSignatures}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
+
+        {payLinkData && (
+          <p className="mt-4 text-center text-[11px] text-neutral-400 font-mono">
+            Pool {payLinkData.pool.slice(0, 8)}… · {payLinkData.network}
+          </p>
+        )}
+
+        {!claimDismissed ? (
+          <div className="relative mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white py-3.5 pl-4 pr-10 shadow-sm">
+            <span className="pointer-events-none absolute left-[12%] top-2 text-lg text-red-400/25" aria-hidden>
+              ✦
+            </span>
+            <span className="pointer-events-none absolute bottom-1 right-[20%] text-sm text-red-400/20" aria-hidden>
+              ✦
+            </span>
+            <span className="pointer-events-none absolute right-[8%] top-3 text-xs text-red-400/20" aria-hidden>
+              ✦
+            </span>
+            <button
+              type="button"
+              onClick={() => setClaimDismissed(true)}
+              className="absolute right-2 top-1/2 z-[1] flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+            <Link href="/" className="relative flex items-center gap-3 pr-2 no-underline">
+              <SkausMark className="h-10 w-10 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-bold text-neutral-900">Claim your SKAUS</span>
+                <span className="block text-xs text-neutral-500">Private & fast</span>
+              </span>
+              <span className="shrink-0 text-xl text-neutral-300" aria-hidden>
+                ›
+              </span>
+            </Link>
+          </div>
+        ) : null}
+
+        <p className="mt-8 text-center text-xs text-neutral-500">
+          Powered by{' '}
+          <Link href="/" className="font-semibold text-skaus-primary hover:underline">
+            SKAUS
+          </Link>{' '}
+          on Solana
+        </p>
       </div>
     </main>
   );

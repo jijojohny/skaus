@@ -20,18 +20,32 @@ pub const MERKLE_TREE_DEPTH: usize = 20;
 /// for future field additions (viewing hints, routing tags, etc.).
 pub const MAX_ENCRYPTED_NOTE_SIZE: usize = 1024;
 
-pub const DEPOSIT_TIERS_USDC: [u64; 4] = [
-    10_000_000,      // 10 USDC    (6 decimals)
-    100_000_000,     // 100 USDC
+/// Power-of-10 deposit tiers for USDC (6 decimals).
+///
+/// Covers 0.01 USDC to 10,000 USDC — any cent-precise amount can be
+/// decomposed exactly into these tiers by the client-side `splitIntoTiers`.
+/// The 4 original tiers (10–10K) retain their existing anonymity sets;
+/// the 3 new sub-dollar tiers (0.01, 0.1, 1) are additive.
+pub const DEPOSIT_TIERS_USDC: [u64; 7] = [
+    10_000,          // 0.01 USDC  (6 decimals)
+    100_000,         // 0.1  USDC
+    1_000_000,       // 1    USDC
+    10_000_000,      // 10   USDC
+    100_000_000,     // 100  USDC
     1_000_000_000,   // 1,000 USDC
     10_000_000_000,  // 10,000 USDC
 ];
 
-pub const DEPOSIT_TIERS_SOL: [u64; 4] = [
-    100_000_000,       // 0.1 SOL   (9 decimals)
-    1_000_000_000,     // 1 SOL
-    10_000_000_000,    // 10 SOL
-    100_000_000_000,   // 100 SOL
+/// Power-of-10 deposit tiers for SOL (9 decimals).
+///
+/// Covers 0.001 SOL to 100 SOL.
+pub const DEPOSIT_TIERS_SOL: [u64; 6] = [
+    1_000_000,         // 0.001 SOL (9 decimals)
+    10_000_000,        // 0.01  SOL
+    100_000_000,       // 0.1   SOL
+    1_000_000_000,     // 1     SOL
+    10_000_000_000,    // 10    SOL
+    100_000_000_000,   // 100   SOL
 ];
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,12 @@ import {
   decryptNote,
 } from '@skaus/crypto';
 import type { DepositNoteData } from '@skaus/crypto';
-import { DEPOSIT_TIERS_USDC, splitIntoTiers } from '@skaus/types';
+import {
+  DEPOSIT_TIERS_USDC,
+  DEPOSIT_TIERS_SOL,
+  splitIntoTiers,
+  splitIntoTiersWithRemainder,
+} from '@skaus/types';
 
 const MERKLE_DEPTH = 20;
 
@@ -288,16 +293,73 @@ describe('e2e pipeline: deposit → scan → withdraw', () => {
   // Step 10: Tier splitting round-trip
   // -----------------------------------------------------------------------
 
-  it('step 10: should split and reconstruct tier amounts', () => {
+  it('step 10: should split round amounts into tiers', () => {
     const totalAmount = 250_000_000n; // 250 USDC
     const tiers = splitIntoTiers(totalAmount, [...DEPOSIT_TIERS_USDC]);
 
     const reconstructed = tiers.reduce((sum, t) => sum + t, 0n);
     expect(reconstructed).to.equal(totalAmount);
 
-    // Each tier must be a valid deposit tier
     for (const tier of tiers) {
       expect(DEPOSIT_TIERS_USDC).to.include(tier);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Step 11: Arbitrary amount splitting (fine-grained tiers)
+  // -----------------------------------------------------------------------
+
+  it('step 11: should split arbitrary amounts like 73.42 USDC exactly', () => {
+    // 73.42 USDC = 73_420_000 base units (6 decimals)
+    const arbitraryAmount = 73_420_000n;
+    const tiers = splitIntoTiers(arbitraryAmount, [...DEPOSIT_TIERS_USDC]);
+
+    const reconstructed = tiers.reduce((sum, t) => sum + t, 0n);
+    expect(reconstructed).to.equal(arbitraryAmount);
+
+    // Every tier must be a valid on-chain tier
+    for (const tier of tiers) {
+      expect(DEPOSIT_TIERS_USDC).to.include(tier);
+    }
+
+    // Verify the decomposition is correct:
+    // 73.42 = 7×10 + 3×1 + 4×0.1 + 2×0.01
+    const tens = tiers.filter((t) => t === 10_000_000n).length;
+    const ones = tiers.filter((t) => t === 1_000_000n).length;
+    const tenths = tiers.filter((t) => t === 100_000n).length;
+    const cents = tiers.filter((t) => t === 10_000n).length;
+    expect(tens).to.equal(7);
+    expect(ones).to.equal(3);
+    expect(tenths).to.equal(4);
+    expect(cents).to.equal(2);
+  });
+
+  it('step 12: should split 0.01 USDC (minimum tier)', () => {
+    const minAmount = 10_000n; // 0.01 USDC
+    const tiers = splitIntoTiers(minAmount, [...DEPOSIT_TIERS_USDC]);
+
+    expect(tiers).to.deep.equal([10_000n]);
+  });
+
+  it('step 13: should report remainder for sub-cent amounts', () => {
+    // 0.005 USDC = 5000 base units — below smallest tier (10_000)
+    const subCentAmount = 5_000n;
+    const { deposits, remainder } = splitIntoTiersWithRemainder(subCentAmount, [...DEPOSIT_TIERS_USDC]);
+
+    expect(deposits).to.have.length(0);
+    expect(remainder).to.equal(5_000n);
+  });
+
+  it('step 14: should split arbitrary SOL amounts', () => {
+    // 1.234 SOL = 1_234_000_000 base units (9 decimals)
+    const solAmount = 1_234_000_000n;
+    const tiers = splitIntoTiers(solAmount, [...DEPOSIT_TIERS_SOL]);
+
+    const reconstructed = tiers.reduce((sum, t) => sum + t, 0n);
+    expect(reconstructed).to.equal(solAmount);
+
+    for (const tier of tiers) {
+      expect(DEPOSIT_TIERS_SOL).to.include(tier);
     }
   });
 });

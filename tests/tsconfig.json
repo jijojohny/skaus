@@ -5,5 +5,5 @@
     "rootDir": ".",
     "types": ["mocha", "chai", "node"]
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts", "../apps/web/src/types/circomlibjs.d.ts"]
 }

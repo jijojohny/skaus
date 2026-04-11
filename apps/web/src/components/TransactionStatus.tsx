@@ -5,6 +5,8 @@ interface TransactionStatusProps {
   signature: string | null;
   progressText?: string;
   allSignatures?: string[];
+  /** Light card (public pay link) */
+  tone?: 'dark' | 'light';
 }
 
 const STEPS = [
@@ -14,13 +16,25 @@ const STEPS = [
   { key: 'done', label: 'Complete', description: 'Payment deposited into the stealth pool.' },
 ] as const;
 
-export function TransactionStatus({ status, signature, progressText, allSignatures }: TransactionStatusProps) {
+export function TransactionStatus({
+  status,
+  signature,
+  progressText,
+  allSignatures,
+  tone = 'dark',
+}: TransactionStatusProps) {
   const currentIndex = STEPS.findIndex(s => s.key === status);
+  const light = tone === 'light';
+  const muted = light ? 'text-neutral-500' : 'text-skaus-muted';
+  const titleActive = light ? 'text-neutral-900' : 'text-white';
+  const titleIdle = light ? 'text-neutral-400' : 'text-skaus-muted';
+  const ringIdle = light ? 'bg-neutral-100 border border-neutral-200' : 'bg-skaus-surface border border-skaus-border';
+  const desc = light ? 'text-neutral-500' : 'text-skaus-muted';
 
   return (
     <div className="space-y-6">
       {progressText && (
-        <p className="text-xs text-skaus-muted text-center font-mono">{progressText}</p>
+        <p className={`text-xs text-center font-mono ${muted}`}>{progressText}</p>
       )}
 
       <div className="space-y-4">
@@ -35,22 +49,22 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
                   ? 'bg-skaus-primary'
                   : isActive
                     ? 'bg-skaus-primary/20 border-2 border-skaus-primary animate-pulse'
-                    : 'bg-skaus-surface border border-skaus-border'
+                    : ringIdle
               }`}>
                 {isComplete ? (
                   <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
-                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-skaus-primary' : 'bg-skaus-muted'}`} />
+                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-skaus-primary' : light ? 'bg-neutral-300' : 'bg-skaus-muted'}`} />
                 )}
               </div>
               <div>
-                <p className={`text-sm font-semibold ${isActive || isComplete ? 'text-white' : 'text-skaus-muted'}`}>
+                <p className={`text-sm font-semibold ${isActive || isComplete ? titleActive : titleIdle}`}>
                   {step.label}
                 </p>
                 {isActive && (
-                  <p className="text-xs text-skaus-muted mt-0.5">{step.description}</p>
+                  <p className={`text-xs mt-0.5 ${desc}`}>{step.description}</p>
                 )}
               </div>
             </div>
@@ -60,7 +74,7 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
 
       {status === 'done' && (allSignatures?.length || signature) && (
         <div className="space-y-3">
-          <div className="p-3 bg-skaus-primary/10 border border-skaus-primary/30 rounded-lg">
+          <div className="p-3 bg-skaus-primary/10 border border-skaus-primary/30 rounded-xl">
             <p className="text-sm text-skaus-primary font-bold">
               Payment sent successfully
               {allSignatures && allSignatures.length > 1 && ` (${allSignatures.length} transactions)`}
@@ -71,13 +85,13 @@ export function TransactionStatus({ status, signature, progressText, allSignatur
                 href={`https://explorer.solana.com/tx/${sig}?cluster=devnet`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-skaus-muted mt-1 font-mono break-all block hover:text-skaus-primary transition-colors"
+                className={`text-xs mt-1 font-mono break-all block hover:text-skaus-primary transition-colors ${light ? 'text-neutral-600' : 'text-skaus-muted'}`}
               >
                 {sig}
               </a>
             ))}
           </div>
-          <p className="text-xs text-skaus-muted text-center">
+          <p className={`text-xs text-center ${muted}`}>
             The recipient will detect this deposit via their scan key.
           </p>
         </div>
