@@ -10,6 +10,8 @@ COPY apps/gateway/ apps/gateway/
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @skaus/types build
 RUN pnpm --filter @skaus/crypto build
+# Generate Prisma client before TypeScript compilation
+RUN pnpm --filter @skaus/gateway db:generate
 RUN pnpm --filter @skaus/gateway build
 
 FROM node:18-alpine AS runner
@@ -21,9 +23,13 @@ COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.ya
 COPY --from=builder /app/packages/ packages/
 COPY --from=builder /app/apps/gateway/dist apps/gateway/dist
 COPY --from=builder /app/apps/gateway/package.json apps/gateway/
+COPY --from=builder /app/apps/gateway/prisma apps/gateway/prisma
+# Copy generated Prisma client
+COPY --from=builder /app/apps/gateway/node_modules/.prisma apps/gateway/node_modules/.prisma
 
 RUN pnpm install --frozen-lockfile --prod
 
 EXPOSE 3001
 
-CMD ["node", "apps/gateway/dist/server.js"]
+# Run migrations then start the server
+CMD ["sh", "-c", "cd apps/gateway && npx prisma migrate deploy && cd /app && node apps/gateway/dist/server.js"]

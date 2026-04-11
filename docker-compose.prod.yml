@@ -1,0 +1,80 @@
+# Production compose — uses pre-built images from ghcr.io.
+# On the server:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required env file: /opt/skaus/.env  (copy .env.example, fill all values)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skaus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-skaus}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-skaus} -d ${POSTGRES_DB:-skaus}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not exposed externally — gateway connects over the internal network
+
+  gateway:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-gateway:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-skaus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-skaus}
+      NODE_ENV: production
+      PORT: 3001
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      SOLANA_CLUSTER: ${SOLANA_CLUSTER:-mainnet-beta}
+      STEALTH_POOL_PROGRAM_ID: ${STEALTH_POOL_PROGRAM_ID}
+      NAME_REGISTRY_PROGRAM_ID: ${NAME_REGISTRY_PROGRAM_ID}
+      RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY}
+      RELAYER_FEE_BPS: ${RELAYER_FEE_BPS:-10}
+      MAX_PENDING_TXS: ${MAX_PENDING_TXS:-50}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      WEB_APP_PUBLIC_URL: ${WEB_APP_PUBLIC_URL}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-web:latest
+    restart: unless-stopped
+    depends_on:
+      - gateway
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - gateway
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./infra/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+
+  # Certbot renews SSL certificates in the background.
+  # First-time cert: run  infra/scripts/init-letsencrypt.sh  before starting nginx.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # Check twice a day; exits immediately if cert is still valid
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+
+volumes:
+  postgres_data:
+  certbot_www:
+  certbot_certs:

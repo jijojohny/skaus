@@ -1,98 +1,123 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { prisma } from '../db';
 import type { CompressedProfile } from '@skaus/types';
 
-/**
- * Profile service — manages compressed profiles with file-backed persistence.
- *
- * Data is stored as JSON on disk and cached in memory for fast reads.
- * Every mutation flushes to disk via atomic write (temp file + rename)
- * to prevent corruption on crash.
- *
- * Production: replace with Light Protocol ZK Compression for on-chain
- * storage at ~$0.0001 per profile (vs ~$3+ with standard accounts).
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const DATA_DIR = process.env.PROFILE_DATA_DIR || join(process.cwd(), 'data');
-const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
-
-// In-memory cache, loaded from disk on startup
-let profileStore = new Map<string, CompressedProfile>();
-let profileByNameHash = new Map<string, string>();
-
-interface PersistedState {
-  profiles: Record<string, CompressedProfile>;
-  nameHashIndex: Record<string, string>;
-}
-
-function loadFromDisk(): void {
-  if (!existsSync(PROFILES_FILE)) return;
-  try {
-    const raw = readFileSync(PROFILES_FILE, 'utf-8');
-    const data: PersistedState = JSON.parse(raw);
-    profileStore = new Map(Object.entries(data.profiles || {}));
-    profileByNameHash = new Map(Object.entries(data.nameHashIndex || {}));
-  } catch {
-    // Corrupt file — start fresh but don't delete the file
-    profileStore = new Map();
-    profileByNameHash = new Map();
-  }
-}
-
-function flushToDisk(): void {
-  const data: PersistedState = {
-    profiles: Object.fromEntries(profileStore),
-    nameHashIndex: Object.fromEntries(profileByNameHash),
+function toCompressedProfile(row: {
+  displayName: string;
+  bio: string;
+  avatarUri: string;
+  links: unknown;
+  paymentConfig: unknown;
+  tiers: unknown;
+  gatedContent: unknown;
+  version: number;
+  updatedAt: bigint;
+}): CompressedProfile {
+  return {
+    displayName: row.displayName,
+    bio: row.bio,
+    avatarUri: row.avatarUri,
+    links: (row.links as CompressedProfile['links']) ?? [],
+    paymentConfig: (row.paymentConfig as CompressedProfile['paymentConfig']) ?? {
+      acceptedTokens: ['USDC'],
+      suggestedAmounts: [],
+      customAmountEnabled: true,
+      thankYouMessage: '',
+    },
+    tiers: (row.tiers as CompressedProfile['tiers']) ?? [],
+    gatedContent: (row.gatedContent as CompressedProfile['gatedContent']) ?? [],
+    version: row.version,
+    updatedAt: Number(row.updatedAt),
   };
-  const json = JSON.stringify(data, null, 2);
-
-  // Atomic write: write to temp, then rename
-  mkdirSync(dirname(PROFILES_FILE), { recursive: true });
-  const tmp = PROFILES_FILE + '.tmp';
-  writeFileSync(tmp, json, 'utf-8');
-  renameSync(tmp, PROFILES_FILE);
 }
 
-// Load existing data on module initialization
-loadFromDisk();
+// ---------------------------------------------------------------------------
+// Public API  (all async — callers must await)
+// ---------------------------------------------------------------------------
 
-export function getProfileByUsername(username: string): CompressedProfile | null {
-  return profileStore.get(username.toLowerCase()) || null;
+export async function getProfileByUsername(username: string): Promise<CompressedProfile | null> {
+  const row = await prisma.profile.findUnique({
+    where: { username: username.toLowerCase() },
+  });
+  return row ? toCompressedProfile(row) : null;
 }
 
-export function getProfileByHash(hash: string): CompressedProfile | null {
-  const username = profileByNameHash.get(hash);
-  if (!username) return null;
-  return profileStore.get(username) || null;
+export async function getProfileByHash(hash: string): Promise<CompressedProfile | null> {
+  const row = await prisma.profile.findUnique({
+    where: { nameHash: hash },
+  });
+  return row ? toCompressedProfile(row) : null;
 }
 
-export function upsertProfile(username: string, profile: CompressedProfile, nameHash?: string): void {
+export async function upsertProfile(
+  username: string,
+  profile: CompressedProfile,
+  nameHash?: string,
+): Promise<void> {
   const key = username.toLowerCase();
-  profile.updatedAt = Date.now();
-  profileStore.set(key, profile);
-  if (nameHash) {
-    profileByNameHash.set(nameHash, key);
+  await prisma.profile.upsert({
+    where: { username: key },
+    update: {
+      nameHash: nameHash ?? undefined,
+      displayName: profile.displayName,
+      bio: profile.bio,
+      avatarUri: profile.avatarUri ?? '',
+      links: profile.links as object[],
+      paymentConfig: profile.paymentConfig as object,
+      tiers: profile.tiers as object[],
+      gatedContent: profile.gatedContent as object[],
+      version: profile.version,
+      updatedAt: BigInt(profile.updatedAt ?? Date.now()),
+    },
+    create: {
+      username: key,
+      nameHash: nameHash ?? null,
+      displayName: profile.displayName,
+      bio: profile.bio,
+      avatarUri: profile.avatarUri ?? '',
+      links: profile.links as object[],
+      paymentConfig: profile.paymentConfig as object,
+      tiers: profile.tiers as object[],
+      gatedContent: profile.gatedContent as object[],
+      version: profile.version,
+      updatedAt: BigInt(profile.updatedAt ?? Date.now()),
+    },
+  });
+}
+
+export async function deleteProfile(username: string): Promise<boolean> {
+  try {
+    await prisma.profile.delete({ where: { username: username.toLowerCase() } });
+    return true;
+  } catch {
+    return false;
   }
-  flushToDisk();
 }
 
-export function deleteProfile(username: string): boolean {
-  const deleted = profileStore.delete(username.toLowerCase());
-  if (deleted) flushToDisk();
-  return deleted;
+export async function listProfiles(limit = 20, offset = 0): Promise<CompressedProfile[]> {
+  const rows = await prisma.profile.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    skip: offset,
+  });
+  return rows.map(toCompressedProfile);
 }
 
-export function listProfiles(limit = 20, offset = 0): CompressedProfile[] {
-  return Array.from(profileStore.values()).slice(offset, offset + limit);
-}
-
-export function searchProfiles(query: string, limit = 20): CompressedProfile[] {
+export async function searchProfiles(query: string, limit = 20): Promise<CompressedProfile[]> {
   const q = query.toLowerCase();
-  return Array.from(profileStore.values())
-    .filter(
-      (p) =>
-        p.displayName.toLowerCase().includes(q) ||
-        p.bio.toLowerCase().includes(q),
-    )
-    .slice(0, limit);
+  const rows = await prisma.profile.findMany({
+    where: {
+      OR: [
+        { displayName: { contains: q, mode: 'insensitive' } },
+        { bio: { contains: q, mode: 'insensitive' } },
+        { username: { contains: q, mode: 'insensitive' } },
+      ],
+    },
+    take: limit,
+    orderBy: { updatedAt: 'desc' },
+  });
+  return rows.map(toCompressedProfile);
 }

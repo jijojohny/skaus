@@ -1,10 +1,7 @@
-import {
-  Connection,
-  PublicKey,
-  ParsedTransactionWithMeta,
-} from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { prisma } from '../db';
 
-interface DepositEvent {
+export interface DepositEvent {
   pool: string;
   commitment: string;
   leafIndex: number;
@@ -21,31 +18,37 @@ interface IndexerConfig {
   pollIntervalMs?: number;
 }
 
+const CHECKPOINT_KEY = 'deposit_indexer_last_sig';
+
 /**
  * Indexes DepositNote account creations from the stealth pool program.
  *
- * Watches for new deposit transactions by polling confirmed signatures
- * and parsing DepositNote account data. Recipients scan these events
- * to detect deposits addressed to them via ECDH trial decryption.
+ * Events are persisted to PostgreSQL so scanning resumes from the correct
+ * slot after a restart — no full re-index needed.
  */
 export class DepositIndexer {
   private connection: Connection;
   private programId: PublicKey;
   private pollIntervalMs: number;
-  private deposits: DepositEvent[] = [];
-  private lastSignature: string | undefined;
   private running = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private lastSignature: string | undefined;
 
-  constructor(config: IndexerConfig) {
-    this.connection = new Connection(config.rpcUrl, 'confirmed');
-    this.programId = new PublicKey(config.programId);
-    this.pollIntervalMs = config.pollIntervalMs ?? 5000;
+  constructor(cfg: IndexerConfig) {
+    this.connection = new Connection(cfg.rpcUrl, 'confirmed');
+    this.programId = new PublicKey(cfg.programId);
+    this.pollIntervalMs = cfg.pollIntervalMs ?? 5000;
   }
 
-  start() {
+  /** Load checkpoint + seed in-memory cache from DB, then begin polling. */
+  async start() {
     if (this.running) return;
     this.running = true;
+
+    // Restore polling cursor from DB so we don't re-index on restart
+    const cp = await prisma.indexerCheckpoint.findUnique({ where: { key: CHECKPOINT_KEY } });
+    if (cp) this.lastSignature = cp.value;
+
     this.poll();
     this.pollTimer = setInterval(() => this.poll(), this.pollIntervalMs);
   }
@@ -58,44 +61,80 @@ export class DepositIndexer {
     }
   }
 
-  getDeposits(sinceTimestamp?: number): DepositEvent[] {
-    if (!sinceTimestamp) return [...this.deposits];
-    return this.deposits.filter((d) => d.timestamp >= sinceTimestamp);
+  async getDeposits(sinceTimestamp?: number): Promise<DepositEvent[]> {
+    const rows = await prisma.depositEvent.findMany({
+      where: sinceTimestamp ? { timestamp: { gte: BigInt(sinceTimestamp) } } : undefined,
+      orderBy: { timestamp: 'asc' },
+    });
+    return rows.map(this.toDepositEvent);
   }
 
-  getDepositsByPool(pool: string, sinceTimestamp?: number): DepositEvent[] {
-    return this.getDeposits(sinceTimestamp).filter((d) => d.pool === pool);
+  async getDepositsByPool(pool: string, sinceTimestamp?: number): Promise<DepositEvent[]> {
+    const rows = await prisma.depositEvent.findMany({
+      where: {
+        pool,
+        ...(sinceTimestamp ? { timestamp: { gte: BigInt(sinceTimestamp) } } : {}),
+      },
+      orderBy: { timestamp: 'asc' },
+    });
+    return rows.map(this.toDepositEvent);
   }
 
-  getDepositCount(): number {
-    return this.deposits.length;
+  async getDepositCount(): Promise<number> {
+    return prisma.depositEvent.count();
+  }
+
+  private toDepositEvent(row: {
+    pool: string;
+    commitment: string;
+    leafIndex: number;
+    amount: string;
+    encryptedNote: string;
+    timestamp: bigint;
+    txSignature: string;
+    slot: bigint;
+  }): DepositEvent {
+    return {
+      pool: row.pool,
+      commitment: row.commitment,
+      leafIndex: row.leafIndex,
+      amount: row.amount,
+      encryptedNote: row.encryptedNote,
+      timestamp: Number(row.timestamp),
+      txSignature: row.txSignature,
+      slot: Number(row.slot),
+    };
   }
 
   private async poll() {
     try {
       const sigs = await this.connection.getSignaturesForAddress(
         this.programId,
-        {
-          limit: 100,
-          until: this.lastSignature,
-        },
-        'confirmed'
+        { limit: 100, until: this.lastSignature },
+        'confirmed',
       );
 
       if (sigs.length === 0) return;
 
       this.lastSignature = sigs[0].signature;
 
+      // Persist the new cursor immediately so it survives a crash mid-batch
+      await prisma.indexerCheckpoint.upsert({
+        where: { key: CHECKPOINT_KEY },
+        update: { value: this.lastSignature },
+        create: { key: CHECKPOINT_KEY, value: this.lastSignature },
+      });
+
       for (const sig of sigs.reverse()) {
         if (sig.err) continue;
         await this.processTransaction(sig.signature, sig.slot, sig.blockTime ?? 0);
       }
-    } catch (err) {
+    } catch {
       // Silently retry on next poll
     }
   }
 
-  private async processTransaction(signature: string, slot: number, blockTime: number) {
+  private async processTransaction(signature: string, slot: number, _blockTime: number) {
     try {
       const tx = await this.connection.getParsedTransaction(signature, {
         maxSupportedTransactionVersion: 0,
@@ -103,47 +142,44 @@ export class DepositIndexer {
 
       if (!tx?.meta?.logMessages) return;
 
-      // Look for deposit log messages from our program
-      const depositLogs = tx.meta.logMessages.filter(
-        (log) => log.includes('Deposit #')
-      );
-
+      const depositLogs = tx.meta.logMessages.filter((log) => log.includes('Deposit #'));
       if (depositLogs.length === 0) return;
 
-      // Parse inner instructions to find newly created DepositNote accounts
       const accountKeys = tx.transaction.message.accountKeys;
       for (const key of accountKeys) {
         const pubkey = typeof key === 'string' ? key : key.pubkey.toBase58();
 
-        // Check if this is a DepositNote PDA (owned by our program)
         try {
           const accountInfo = await this.connection.getAccountInfo(new PublicKey(pubkey));
           if (!accountInfo || !accountInfo.owner.equals(this.programId)) continue;
 
-          // DepositNote layout:
-          // discriminator(8) + pool(32) + commitment(32) + encrypted_note_len(4) + ... + leaf_index(4) + timestamp(8) + bump(1)
           const data = accountInfo.data;
           if (data.length < 8 + 32 + 32 + 4) continue;
 
-          const pool = new PublicKey(data.slice(8, 40)).toBase58();
-          const commitment = Buffer.from(data.slice(40, 72)).toString('hex');
+          const pool = new PublicKey(data.subarray(8, 40)).toBase58();
+          const commitment = Buffer.from(data.subarray(40, 72)).toString('hex');
 
           const noteLen = data.readUInt32LE(72);
           const noteEnd = 76 + noteLen;
-          const encryptedNote = Buffer.from(data.slice(76, noteEnd)).toString('base64');
+          const encryptedNote = Buffer.from(data.subarray(76, noteEnd)).toString('base64');
 
           const leafIndex = data.readUInt32LE(noteEnd);
           const timestamp = Number(data.readBigInt64LE(noteEnd + 4));
 
-          this.deposits.push({
-            pool,
-            commitment,
-            leafIndex,
-            amount: '0', // Amount is in the encrypted note, not stored plainly
-            encryptedNote,
-            timestamp,
-            txSignature: signature,
-            slot,
+          // Upsert so reprocessing the same tx is idempotent
+          await prisma.depositEvent.upsert({
+            where: { commitment },
+            update: {},
+            create: {
+              pool,
+              commitment,
+              leafIndex,
+              amount: '0',
+              encryptedNote,
+              timestamp: BigInt(timestamp),
+              txSignature: signature,
+              slot: BigInt(slot),
+            },
           });
         } catch {
           // Not a DepositNote account

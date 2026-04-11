@@ -9,11 +9,11 @@ import {
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 import bs58 from 'bs58';
+import { prisma } from '../db';
 
 interface RelayConfig {
   solana: {
@@ -42,7 +42,7 @@ export class RelayService {
   private programId: PublicKey;
   private maxPendingTxs: number;
   private pendingTxCount = 0;
-  private totalRelayed = 0;
+  private totalRelayed = 0n;
 
   constructor(config: RelayConfig) {
     this.connection = new Connection(config.solana.rpcUrl, 'confirmed');
@@ -56,6 +56,12 @@ export class RelayService {
     } else {
       this.relayerKeypair = null;
     }
+  }
+
+  /** Call once after construction to restore persisted totalRelayed count. */
+  async init() {
+    const row = await prisma.relayMetrics.findUnique({ where: { id: 1 } });
+    if (row) this.totalRelayed = row.totalRelayed;
   }
 
   async submitWithdrawal(
@@ -78,9 +84,9 @@ export class RelayService {
       if (proofBytes.length !== 256) {
         throw new Error(`Invalid proof size: expected 256 bytes, got ${proofBytes.length}`);
       }
-      const proofA = proofBytes.slice(0, 64);
-      const proofB = proofBytes.slice(64, 192);
-      const proofC = proofBytes.slice(192, 256);
+      const proofA = proofBytes.subarray(0, 64);
+      const proofB = proofBytes.subarray(64, 192);
+      const proofC = proofBytes.subarray(192, 256);
 
       const nullifierHashBytes = Buffer.from(publicInputs.nullifierHash, 'hex');
       const merkleRootBytes = Buffer.from(publicInputs.merkleRoot, 'hex');
@@ -133,7 +139,12 @@ export class RelayService {
         { commitment: 'confirmed' }
       );
 
-      this.totalRelayed++;
+      this.totalRelayed += 1n;
+      await prisma.relayMetrics.upsert({
+        where: { id: 1 },
+        update: { totalRelayed: this.totalRelayed },
+        create: { id: 1, totalRelayed: this.totalRelayed },
+      });
 
       return {
         txSignature: signature,
@@ -149,7 +160,7 @@ export class RelayService {
     return {
       active: !!this.relayerKeypair,
       pendingTxs: this.pendingTxCount,
-      totalRelayed: this.totalRelayed,
+      totalRelayed: Number(this.totalRelayed),
       maxPendingTxs: this.maxPendingTxs,
       relayerPubkey: this.relayerKeypair?.publicKey.toBase58() || null,
     };
@@ -207,7 +218,7 @@ export class RelayService {
     let feeTokenAccount: PublicKey;
     if (poolAccount && poolAccount.data.length >= FEE_VAULT_OFFSET + 32) {
       feeTokenAccount = new PublicKey(
-        poolAccount.data.slice(FEE_VAULT_OFFSET, FEE_VAULT_OFFSET + 32)
+        poolAccount.data.subarray(FEE_VAULT_OFFSET, FEE_VAULT_OFFSET + 32)
       );
     } else {
       feeTokenAccount = poolTokenAccount;

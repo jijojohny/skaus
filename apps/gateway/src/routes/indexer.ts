@@ -11,7 +11,10 @@ function getIndexer(): DepositIndexer {
       programId: config.solana.stealthPoolProgramId,
       pollIntervalMs: 5000,
     });
-    indexer.start();
+    // start() is async (loads DB checkpoint); fire-and-forget here since
+    // the server.ts also starts a canonical indexer — this path handles
+    // standalone usage without full server bootstrap
+    indexer.start().catch(() => {});
   }
   return indexer;
 }
@@ -31,9 +34,9 @@ export async function indexerRoutes(app: FastifyInstance) {
       const { pool, since } = request.query as { pool?: string; since?: number };
       const idx = getIndexer();
 
-      const deposits = pool
+      const deposits = await (pool
         ? idx.getDepositsByPool(pool, since)
-        : idx.getDeposits(since);
+        : idx.getDeposits(since));
 
       return reply.send({
         count: deposits.length,
@@ -44,7 +47,7 @@ export async function indexerRoutes(app: FastifyInstance) {
 
   app.get('/deposits/count', {
     handler: async (_request, reply) => {
-      return reply.send({ count: getIndexer().getDepositCount() });
+      return reply.send({ count: await getIndexer().getDepositCount() });
     },
   });
 }

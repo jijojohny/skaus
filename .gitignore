@@ -39,7 +39,11 @@ config/.env.*
 .envrc
 .vercel/
 .netrc
+.npmrc
 application_default_credentials.json
+
+# Local Docker Compose overrides (may contain real credentials)
+docker-compose.override.yml
 
 # Wallet / keypair files
 *.key

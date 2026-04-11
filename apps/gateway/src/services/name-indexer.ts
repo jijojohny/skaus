@@ -1,7 +1,8 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { prisma } from '../db';
 
-interface NameEvent {
+export interface NameEvent {
   nameHash: string;
   authority: string;
   scanPubkey: string;
@@ -19,33 +20,36 @@ interface NameIndexerConfig {
   pollIntervalMs?: number;
 }
 
+const CHECKPOINT_KEY = 'name_indexer_last_sig';
+
 /**
  * Indexes NameRecord account changes from the name-registry program.
  *
- * Watches for new registrations, key rotations, profile updates,
- * and status changes. Maintains an in-memory lookup cache.
- *
- * In production, this would be replaced by Helius webhooks
- * for real-time notifications.
+ * Records are persisted to PostgreSQL so cache survives gateway restarts
+ * and polling resumes from the correct slot.
  */
 export class NameIndexer {
   private connection: Connection;
   private programId: PublicKey;
   private pollIntervalMs: number;
-  private names: Map<string, NameEvent> = new Map();
-  private lastSignature: string | undefined;
   private running = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private lastSignature: string | undefined;
 
-  constructor(config: NameIndexerConfig) {
-    this.connection = new Connection(config.rpcUrl, 'confirmed');
-    this.programId = new PublicKey(config.programId);
-    this.pollIntervalMs = config.pollIntervalMs ?? 10000;
+  constructor(cfg: NameIndexerConfig) {
+    this.connection = new Connection(cfg.rpcUrl, 'confirmed');
+    this.programId = new PublicKey(cfg.programId);
+    this.pollIntervalMs = cfg.pollIntervalMs ?? 10000;
   }
 
-  start() {
+  /** Load checkpoint from DB then begin polling. */
+  async start() {
     if (this.running) return;
     this.running = true;
+
+    const cp = await prisma.indexerCheckpoint.findUnique({ where: { key: CHECKPOINT_KEY } });
+    if (cp) this.lastSignature = cp.value;
+
     this.poll();
     this.pollTimer = setInterval(() => this.poll(), this.pollIntervalMs);
   }
@@ -58,23 +62,22 @@ export class NameIndexer {
     }
   }
 
-  getNameByHash(nameHash: string): NameEvent | undefined {
-    return this.names.get(nameHash);
+  async getNameByHash(nameHash: string): Promise<NameEvent | undefined> {
+    const row = await prisma.nameRecord.findUnique({ where: { nameHash } });
+    return row ? this.toNameEvent(row) : undefined;
   }
 
-  getAllNames(): NameEvent[] {
-    return Array.from(this.names.values());
+  async getAllNames(): Promise<NameEvent[]> {
+    const rows = await prisma.nameRecord.findMany({ orderBy: { createdAt: 'asc' } });
+    return rows.map((r: Parameters<typeof this.toNameEvent>[0]) => this.toNameEvent(r));
   }
 
-  getNameCount(): number {
-    return this.names.size;
+  async getNameCount(): Promise<number> {
+    return prisma.nameRecord.count();
   }
 
-  /**
-   * Handle a Helius webhook event for account updates.
-   * Called by the webhook route.
-   */
-  handleWebhookEvent(event: {
+  /** Handle a Helius webhook event for real-time account updates. */
+  async handleWebhookEvent(event: {
     type: string;
     data: { accountData: Buffer; pubkey: string };
     signature: string;
@@ -86,12 +89,61 @@ export class NameIndexer {
         Buffer.from(event.data.accountData),
         event.signature,
       );
-      if (nameEvent) {
-        this.names.set(nameEvent.nameHash, nameEvent);
-      }
+      if (nameEvent) await this.persistNameEvent(nameEvent);
     } catch {
       // Not a valid NameRecord
     }
+  }
+
+  private toNameEvent(row: {
+    nameHash: string;
+    authority: string;
+    scanPubkey: string;
+    spendPubkey: string;
+    version: number;
+    profileCid: string | null;
+    status: string;
+    updatedAt: bigint;
+    txSignature: string;
+  }): NameEvent {
+    return {
+      nameHash: row.nameHash,
+      authority: row.authority,
+      scanPubkey: row.scanPubkey,
+      spendPubkey: row.spendPubkey,
+      version: row.version,
+      profileCid: row.profileCid,
+      status: row.status as NameEvent['status'],
+      updatedAt: Number(row.updatedAt),
+      txSignature: row.txSignature,
+    };
+  }
+
+  private async persistNameEvent(event: NameEvent) {
+    await prisma.nameRecord.upsert({
+      where: { nameHash: event.nameHash },
+      update: {
+        authority: event.authority,
+        scanPubkey: event.scanPubkey,
+        spendPubkey: event.spendPubkey,
+        version: event.version,
+        profileCid: event.profileCid,
+        status: event.status,
+        updatedAt: BigInt(event.updatedAt),
+        txSignature: event.txSignature,
+      },
+      create: {
+        nameHash: event.nameHash,
+        authority: event.authority,
+        scanPubkey: event.scanPubkey,
+        spendPubkey: event.spendPubkey,
+        version: event.version,
+        profileCid: event.profileCid,
+        status: event.status,
+        updatedAt: BigInt(event.updatedAt),
+        txSignature: event.txSignature,
+      },
+    });
   }
 
   private async poll() {
@@ -104,6 +156,12 @@ export class NameIndexer {
 
       if (sigs.length === 0) return;
       this.lastSignature = sigs[0].signature;
+
+      await prisma.indexerCheckpoint.upsert({
+        where: { key: CHECKPOINT_KEY },
+        update: { value: this.lastSignature },
+        create: { key: CHECKPOINT_KEY, value: this.lastSignature },
+      });
 
       for (const sig of sigs.reverse()) {
         if (sig.err) continue;
@@ -122,7 +180,7 @@ export class NameIndexer {
 
       if (!tx?.meta?.logMessages) return;
 
-      const relevantLogs = tx.meta.logMessages.filter(
+      const relevant = tx.meta.logMessages.some(
         (log) =>
           log.includes('Name registered') ||
           log.includes('Keys rotated') ||
@@ -130,8 +188,7 @@ export class NameIndexer {
           log.includes('Name suspended') ||
           log.includes('Name unsuspended'),
       );
-
-      if (relevantLogs.length === 0) return;
+      if (!relevant) return;
 
       const accountKeys = tx.transaction.message.accountKeys;
       for (const key of accountKeys) {
@@ -143,9 +200,7 @@ export class NameIndexer {
           if (accountInfo.data.length < 150) continue;
 
           const nameEvent = this.deserializeNameRecord(accountInfo.data, signature);
-          if (nameEvent) {
-            this.names.set(nameEvent.nameHash, nameEvent);
-          }
+          if (nameEvent) await this.persistNameEvent(nameEvent);
         } catch {
           // Not a NameRecord
         }
@@ -187,7 +242,7 @@ export class NameIndexer {
       offset += 8;
 
       const statusByte = data[offset];
-      const statusMap: Record<number, 'active' | 'suspended' | 'expired'> = {
+      const statusMap: Record<number, NameEvent['status']> = {
         0: 'active',
         1: 'suspended',
         2: 'expired',

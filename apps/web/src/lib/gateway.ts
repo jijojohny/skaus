@@ -142,6 +142,7 @@ export interface PaymentRequestData {
   id: string;
   creator: string;
   username?: string;
+  slug: string;
   amount: number;
   token: string;
   memo: string;
@@ -185,6 +186,19 @@ export async function getPaymentRequest(
 ): Promise<PaymentRequestData> {
   const q = options?.recordView ? '?recordView=1' : '';
   const res = await fetch(`${config.gatewayUrl}/requests/${id}${q}`);
+  if (!res.ok) throw new Error('Payment request not found');
+  return res.json();
+}
+
+export async function getPaymentRequestBySlug(
+  username: string,
+  slug: string,
+  options?: { recordView?: boolean },
+): Promise<PaymentRequestData> {
+  const q = options?.recordView ? '?recordView=1' : '';
+  const res = await fetch(
+    `${config.gatewayUrl}/requests/by-slug/${encodeURIComponent(username)}/${encodeURIComponent(slug)}${q}`,
+  );
   if (!res.ok) throw new Error('Payment request not found');
   return res.json();
 }

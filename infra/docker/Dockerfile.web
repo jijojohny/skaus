@@ -1,0 +1,61 @@
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# NEXT_PUBLIC_* vars must be available at build time — pass via --build-arg
+ARG NEXT_PUBLIC_PRIVY_APP_ID
+ARG NEXT_PUBLIC_GATEWAY_URL
+ARG NEXT_PUBLIC_SOLANA_RPC_URL
+ARG NEXT_PUBLIC_PROGRAM_ID
+ARG NEXT_PUBLIC_NAME_REGISTRY_PROGRAM_ID
+ARG NEXT_PUBLIC_TOKEN_MINT
+ARG NEXT_PUBLIC_CLUSTER=devnet
+ARG NEXT_PUBLIC_DEMO_MODE=false
+ARG NEXT_PUBLIC_PUBLIC_LINK_BASE
+
+ENV NEXT_PUBLIC_PRIVY_APP_ID=$NEXT_PUBLIC_PRIVY_APP_ID
+ENV NEXT_PUBLIC_GATEWAY_URL=$NEXT_PUBLIC_GATEWAY_URL
+ENV NEXT_PUBLIC_SOLANA_RPC_URL=$NEXT_PUBLIC_SOLANA_RPC_URL
+ENV NEXT_PUBLIC_PROGRAM_ID=$NEXT_PUBLIC_PROGRAM_ID
+ENV NEXT_PUBLIC_NAME_REGISTRY_PROGRAM_ID=$NEXT_PUBLIC_NAME_REGISTRY_PROGRAM_ID
+ENV NEXT_PUBLIC_TOKEN_MINT=$NEXT_PUBLIC_TOKEN_MINT
+ENV NEXT_PUBLIC_CLUSTER=$NEXT_PUBLIC_CLUSTER
+ENV NEXT_PUBLIC_DEMO_MODE=$NEXT_PUBLIC_DEMO_MODE
+ENV NEXT_PUBLIC_PUBLIC_LINK_BASE=$NEXT_PUBLIC_PUBLIC_LINK_BASE
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY packages/ packages/
+COPY apps/web/ apps/web/
+
+RUN pnpm install --frozen-lockfile
+
+RUN pnpm --filter @skaus/types build
+RUN pnpm --filter @skaus/crypto build
+RUN pnpm --filter @skaus/web build
+
+# ── runner ────────────────────────────────────────────────────────────────────
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 nextjs
+
+# standalone output mirrors the monorepo path from the builder's /app root:
+#   apps/web/.next/standalone/apps/web/server.js
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static     ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public           ./apps/web/public
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "apps/web/server.js"]

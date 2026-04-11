@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Profiles
+// ---------------------------------------------------------------------------
+
+model Profile {
+  username      String   @id
+  nameHash      String?  @unique
+  displayName   String   @default("")
+  bio           String   @default("")
+  avatarUri     String   @default("")
+  links         Json     @default("[]")
+  paymentConfig Json     @default("{\"acceptedTokens\":[\"USDC\"],\"suggestedAmounts\":[],\"customAmountEnabled\":true,\"thankYouMessage\":\"\"}")
+  tiers         Json     @default("[]")
+  gatedContent  Json     @default("[]")
+  version       Int      @default(1)
+  updatedAt     BigInt   @default(0)
+  createdAt     DateTime @default(now())
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Deposit Indexer
+// ---------------------------------------------------------------------------
+
+model DepositEvent {
+  id            Int      @id @default(autoincrement())
+  pool          String
+  commitment    String   @unique
+  leafIndex     Int
+  amount        String   @default("0")
+  encryptedNote String   @db.Text
+  txSignature   String   @unique
+  slot          BigInt
+  timestamp     BigInt
+  createdAt     DateTime @default(now())
+
+  @@index([pool])
+  @@index([timestamp])
+  @@map("deposit_events")
+}
+
+// ---------------------------------------------------------------------------
+// Name Registry Indexer
+// ---------------------------------------------------------------------------
+
+model NameRecord {
+  nameHash    String   @id
+  authority   String
+  scanPubkey  String
+  spendPubkey String
+  version     Int      @default(1)
+  profileCid  String?
+  status      String   @default("active")
+  updatedAt   BigInt
+  txSignature String
+  createdAt   DateTime @default(now())
+
+  @@index([authority])
+  @@map("name_records")
+}
+
+// ---------------------------------------------------------------------------
+// Payment Requests
+// ---------------------------------------------------------------------------
+
+model PaymentRequest {
+  id               String    @id
+  creator          String
+  username         String
+  slug             String
+  amount           Float     @default(0)
+  token            String    @default("USDC")
+  memo             String    @default("")
+  title            String    @default("Payment link")
+  openAmount       Boolean   @default(false)
+  expiresAt        BigInt?
+  maxPayments      Int       @default(1)
+  depositPathIndex Int
+  status           String    @default("pending")
+  views            Int       @default(0)
+  createdAt        BigInt
+  updatedAt        BigInt
+  payments         Payment[]
+
+  @@unique([username, slug])
+  @@index([creator])
+  @@map("payment_requests")
+}
+
+model Payment {
+  id          Int            @id @default(autoincrement())
+  requestId   String
+  txSignature String
+  amount      Float
+  paidAt      BigInt
+  request     PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Shared infra
+// ---------------------------------------------------------------------------
+
+/// Persists lastSignature cursors for each indexer so restarts don't re-index
+model IndexerCheckpoint {
+  key   String @id
+  value String
+
+  @@map("indexer_checkpoints")
+}
+
+/// Singleton row (id = 1) tracking cumulative relay stats
+model RelayMetrics {
+  id           Int    @id @default(1)
+  totalRelayed BigInt @default(0)
+
+  @@map("relay_metrics")
+}

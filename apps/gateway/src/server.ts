@@ -10,6 +10,7 @@ import { requestRoutes } from './routes/requests';
 import { webhookRoutes } from './routes/webhooks';
 import { profileRoutes } from './routes/profiles';
 import { config } from './config';
+import { prisma } from './db';
 
 async function buildServer() {
   const app = Fastify({
@@ -46,11 +47,60 @@ async function buildServer() {
 async function main() {
   const app = await buildServer();
 
+  // Connect to PostgreSQL before accepting requests
+  await prisma.$connect();
+  app.log.info('PostgreSQL connected');
+
+  // Initialise indexers (restores polling cursors from DB)
+  const { DepositIndexer } = await import('./services/indexer');
+  const { NameIndexer } = await import('./services/name-indexer');
+  const { RelayService } = await import('./services/relay');
+
+  const depositIndexer = new DepositIndexer({
+    rpcUrl: config.solana.rpcUrl,
+    programId: config.solana.stealthPoolProgramId,
+  });
+  await depositIndexer.start();
+  app.log.info('Deposit indexer started');
+
+  const nameIndexer = new NameIndexer({
+    rpcUrl: config.solana.rpcUrl,
+    programId: config.solana.nameRegistryProgramId,
+  });
+  await nameIndexer.start();
+  app.log.info('Name indexer started');
+
+  const relayService = new RelayService({
+    solana: {
+      rpcUrl: config.solana.rpcUrl,
+      cluster: config.solana.cluster,
+      stealthPoolProgramId: config.solana.stealthPoolProgramId,
+    },
+    relayer: {
+      privateKey: config.relayer.privateKey,
+      feeBps: config.relayer.feeBps,
+      maxPendingTxs: config.relayer.maxPendingTxs,
+    },
+  });
+  await relayService.init();
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    depositIndexer.stop();
+    nameIndexer.stop();
+    await prisma.$disconnect();
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
   try {
     await app.listen({ port: config.port, host: '0.0.0.0' });
     app.log.info(`SKAUS Gateway running on port ${config.port}`);
   } catch (err) {
     app.log.error(err);
+    await prisma.$disconnect();
     process.exit(1);
   }
 }

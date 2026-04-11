@@ -11,7 +11,7 @@ function getNameIndexer(): NameIndexer {
       programId: config.solana.nameRegistryProgramId,
       pollIntervalMs: 10000,
     });
-    nameIndexer.start();
+    nameIndexer.start().catch(() => {});
   }
   return nameIndexer;
 }
@@ -21,8 +21,6 @@ export async function webhookRoutes(app: FastifyInstance) {
    * POST /webhooks/name-registry
    *
    * Helius webhook endpoint for NameRecord account changes.
-   * In production, Helius sends events when on-chain accounts are
-   * created or updated. For local dev, the NameIndexer uses polling.
    */
   app.post('/name-registry', async (request, reply) => {
     const events = request.body as any[];
@@ -36,7 +34,7 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     for (const event of events) {
       try {
-        indexer.handleWebhookEvent(event);
+        await indexer.handleWebhookEvent(event);
         processed++;
       } catch {
         // Skip malformed events
@@ -48,14 +46,12 @@ export async function webhookRoutes(app: FastifyInstance) {
 
   /**
    * GET /webhooks/name-registry/stats
-   *
-   * Returns indexer statistics.
    */
   app.get('/name-registry/stats', async (_request, reply) => {
     const indexer = getNameIndexer();
     return reply.send({
-      totalNames: indexer.getNameCount(),
-      names: indexer.getAllNames(),
+      totalNames: await indexer.getNameCount(),
+      names: await indexer.getAllNames(),
     });
   });
 }

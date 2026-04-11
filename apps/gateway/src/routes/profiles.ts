@@ -16,7 +16,7 @@ export async function profileRoutes(app: FastifyInstance) {
   app.get<{ Params: { username: string } }>(
     '/:username',
     async (request, reply) => {
-      const profile = getProfileByUsername(request.params.username);
+      const profile = await getProfileByUsername(request.params.username);
 
       if (!profile) {
         return reply.status(404).send({ error: 'Profile not found' });
@@ -30,7 +30,6 @@ export async function profileRoutes(app: FastifyInstance) {
    * PUT /profiles/:username
    *
    * Create or update a profile.
-   * In production, this triggers a compressed account write on-chain.
    */
   app.put<{ Params: { username: string }; Body: CompressedProfile }>(
     '/:username',
@@ -42,7 +41,7 @@ export async function profileRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'displayName is required' });
       }
 
-      upsertProfile(username, {
+      await upsertProfile(username, {
         ...profile,
         version: (profile.version || 0) + 1,
         updatedAt: Date.now(),
@@ -63,11 +62,11 @@ export async function profileRoutes(app: FastifyInstance) {
       const { q, limit, offset } = request.query;
 
       if (q) {
-        const results = searchProfiles(q, limit || 20);
+        const results = await searchProfiles(q, limit || 20);
         return reply.send({ results, count: results.length });
       }
 
-      const results = listProfiles(limit || 20, offset || 0);
+      const results = await listProfiles(limit || 20, offset || 0);
       return reply.send({ results, count: results.length });
     },
   );

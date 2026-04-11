@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_GATEWAY: ghcr.io/${{ github.repository_owner }}/skaus-gateway
+  IMAGE_WEB:     ghcr.io/${{ github.repository_owner }}/skaus-web
+
+jobs:
+  # ── Type-check & lint ───────────────────────────────────────────────────────
+  typecheck:
+    name: Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @skaus/types build
+          pnpm --filter @skaus/crypto build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @skaus/gateway db:generate
+
+      - name: Type-check gateway
+        run: pnpm --filter @skaus/gateway lint
+
+      - name: Type-check web
+        run: pnpm --filter @skaus/web lint
+
+  # ── Build & push Docker images (main branch only) ──────────────────────────
+  docker:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    needs: typecheck
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta — gateway
+        id: meta-gateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_GATEWAY }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build & push gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.gateway
+          push: true
+          tags: ${{ steps.meta-gateway.outputs.tags }}
+          labels: ${{ steps.meta-gateway.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Docker meta — web
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_WEB }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_GATEWAY_URL=${{ vars.NEXT_PUBLIC_GATEWAY_URL }}
+            NEXT_PUBLIC_PRIVY_APP_ID=${{ secrets.NEXT_PUBLIC_PRIVY_APP_ID }}
+            NEXT_PUBLIC_SOLANA_RPC_URL=${{ vars.NEXT_PUBLIC_SOLANA_RPC_URL }}
+            NEXT_PUBLIC_PROGRAM_ID=${{ vars.NEXT_PUBLIC_PROGRAM_ID }}
+            NEXT_PUBLIC_NAME_REGISTRY_PROGRAM_ID=${{ vars.NEXT_PUBLIC_NAME_REGISTRY_PROGRAM_ID }}
+            NEXT_PUBLIC_TOKEN_MINT=${{ vars.NEXT_PUBLIC_TOKEN_MINT }}
+            NEXT_PUBLIC_CLUSTER=${{ vars.NEXT_PUBLIC_CLUSTER }}
+            NEXT_PUBLIC_PUBLIC_LINK_BASE=${{ vars.NEXT_PUBLIC_PUBLIC_LINK_BASE }}
+
+  # ── Deploy to VPS ──────────────────────────────────────────────────────────
+  # Required repo secrets:  DEPLOY_HOST  DEPLOY_USER  DEPLOY_SSH_KEY  GHCR_TOKEN
+  # GHCR_TOKEN = GitHub PAT with read:packages scope (Settings → Developer settings)
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4   # needed to scp the compose + nginx files
+
+      - name: Sync deploy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          source:   "docker-compose.prod.yml,infra/docker/nginx.prod.conf.template"
+          target:   /opt/skaus
+          strip_components: 0
+
+      - name: Pull images & restart services
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        with:
+          host:     ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          envs:     GHCR_TOKEN,GITHUB_ACTOR
+          script: |
+            set -e
+            cd /opt/skaus
+
+            # Re-generate nginx.conf if the template changed
+            if [ -f infra/docker/nginx.prod.conf.template ] && [ -n "${DOMAIN:-}" ]; then
+              envsubst '${DOMAIN}' \
+                < infra/docker/nginx.prod.conf.template \
+                > infra/docker/nginx.conf
+            fi
+
+            # Authenticate with GHCR using a PAT (read:packages scope)
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+            # Pull new image layers (skips unchanged layers via GHA cache)
+            docker compose -f docker-compose.prod.yml pull
+
+            # Restart only changed services; postgres stays running
+            docker compose -f docker-compose.prod.yml up -d --no-build
+
+            # Reclaim disk space used by replaced image layers
+            docker image prune -f

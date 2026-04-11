@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   transpilePackages: ['@skaus/types', '@skaus/crypto'],
   experimental: {
     serverComponentsExternalPackages: ['@solana/web3.js'],

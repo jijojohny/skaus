@@ -1,23 +1,28 @@
 import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
+import { prisma } from '../db';
 import { config } from '../config';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type PaymentStatus = 'pending' | 'partial' | 'paid' | 'expired' | 'cancelled';
 
 interface StoredRequest {
   id: string;
   creator: string;
-  /** @username used in pay URL /{username}/request/{id} */
   username: string;
+  slug: string;
   amount: number;
   token: string;
   memo: string;
-  /** Display title for link cards */
   title: string;
-  /** If true, payers choose amount on the pay page */
   openAmount: boolean;
   expiresAt: number | null;
   maxPayments: number;
   depositPathIndex: number;
-  status: 'pending' | 'partial' | 'paid' | 'expired' | 'cancelled';
+  status: PaymentStatus;
   payments: Array<{ txSignature: string; amount: number; paidAt: number }>;
   createdAt: number;
   updatedAt: number;
@@ -25,21 +30,113 @@ interface StoredRequest {
 }
 
 /**
- * In-memory store for payment requests.
- * Production: encrypted PostgreSQL (see Plan B § 4.4).
+ * Convert a title into a URL-safe slug.
+ * "My Invoice #1" → "my-invoice-1"
  */
-const requestStore = new Map<string, StoredRequest>();
-const requestsByCreator = new Map<string, Set<string>>();
-
-/** Backfill fields for records created before link-metadata fields existed */
-function normalizeRequest(s: StoredRequest): StoredRequest {
-  const r = s as StoredRequest & { username?: string; title?: string; openAmount?: boolean; views?: number };
-  if (!r.username) r.username = r.creator.slice(0, 8);
-  if (r.title === undefined || r.title === '') r.title = r.memo?.trim() ? r.memo.slice(0, 120) : 'Payment link';
-  if (r.openAmount === undefined) r.openAmount = r.amount === 0;
-  if (r.views === undefined) r.views = 0;
-  return r as StoredRequest;
+function toSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')   // strip special chars
+    .replace(/\s+/g, '-')            // spaces → hyphens
+    .replace(/-+/g, '-')             // collapse multiple hyphens
+    .replace(/^-|-$/g, '')           // trim leading/trailing hyphens
+    .slice(0, 60)                    // max length
+    || 'payment';
 }
+
+/**
+ * Ensure slug is unique for this username by appending a counter if needed.
+ */
+async function uniqueSlug(username: string, base: string): Promise<string> {
+  let slug = base;
+  let attempt = 2;
+  while (true) {
+    const existing = await prisma.paymentRequest.findUnique({
+      where: { username_slug: { username, slug } },
+    });
+    if (!existing) return slug;
+    slug = `${base}-${attempt++}`;
+  }
+}
+
+/** Expand a DB row + its payments into the legacy StoredRequest shape. */
+function toStoredRequest(
+  row: {
+    id: string;
+    creator: string;
+    username: string;
+    slug: string;
+    amount: number;
+    token: string;
+    memo: string;
+    title: string;
+    openAmount: boolean;
+    expiresAt: bigint | null;
+    maxPayments: number;
+    depositPathIndex: number;
+    status: string;
+    views: number;
+    createdAt: bigint;
+    updatedAt: bigint;
+    payments: Array<{ txSignature: string; amount: number; paidAt: bigint }>;
+  },
+): StoredRequest {
+  return {
+    id: row.id,
+    creator: row.creator,
+    username: row.username,
+    slug: row.slug,
+    amount: row.amount,
+    token: row.token,
+    memo: row.memo,
+    title: row.title,
+    openAmount: row.openAmount,
+    expiresAt: row.expiresAt !== null ? Number(row.expiresAt) : null,
+    maxPayments: row.maxPayments,
+    depositPathIndex: row.depositPathIndex,
+    status: row.status as PaymentStatus,
+    views: row.views,
+    createdAt: Number(row.createdAt),
+    updatedAt: Number(row.updatedAt),
+    payments: row.payments.map((p) => ({
+      txSignature: p.txSignature,
+      amount: p.amount,
+      paidAt: Number(p.paidAt),
+    })),
+  };
+}
+
+/** Recompute status from payments, expiry and max. Persists change if status changed. */
+async function resolveStatus(req: StoredRequest): Promise<StoredRequest> {
+  if (req.status === 'cancelled' || req.status === 'paid') return req;
+
+  let newStatus: PaymentStatus = req.status;
+
+  // Check expiry
+  if (req.expiresAt && Date.now() > req.expiresAt && req.status === 'pending') {
+    newStatus = 'expired';
+  }
+
+  if (newStatus !== req.status) {
+    await prisma.paymentRequest.update({
+      where: { id: req.id },
+      data: { status: newStatus, updatedAt: BigInt(Date.now()) },
+    });
+    req.status = newStatus;
+    req.updatedAt = Date.now();
+  }
+
+  return req;
+}
+
+function buildRequestUrl(username: string, slug: string): string {
+  return `${config.webAppPublicUrl}/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 export async function requestRoutes(app: FastifyInstance) {
   /**
@@ -90,48 +187,36 @@ export async function requestRoutes(app: FastifyInstance) {
     }
 
     const id = randomUUID();
-    const now = Date.now();
+    const now = BigInt(Date.now());
     const linkTitle = (title && String(title).trim()) || 'Payment link';
+    const slug = await uniqueSlug(username, toSlug(linkTitle));
 
-    const stored: StoredRequest = {
-      id,
-      creator,
-      username,
-      amount: openAmount ? 0 : amt,
-      token: token || 'USDC',
-      memo: memo || '',
-      title: linkTitle,
-      openAmount,
-      expiresAt: expiresAt || null,
-      maxPayments: maxPayments || 1,
-      depositPathIndex,
-      status: 'pending',
-      payments: [],
-      createdAt: now,
-      updatedAt: now,
-      views: 0,
-    };
-
-    requestStore.set(id, stored);
-    if (!requestsByCreator.has(creator)) {
-      requestsByCreator.set(creator, new Set());
-    }
-    requestsByCreator.get(creator)!.add(id);
-
-    const payUrl = buildRequestUrl(
-      username,
-      id,
-      stored.amount,
-      stored.token,
-      stored.memo,
-      expiresAt,
-      openAmount,
-    );
-
-    return reply.status(201).send({
-      ...stored,
-      payUrl,
+    const row = await prisma.paymentRequest.create({
+      data: {
+        id,
+        creator,
+        username,
+        slug,
+        amount: openAmount ? 0 : amt,
+        token: token || 'USDC',
+        memo: memo || '',
+        title: linkTitle,
+        openAmount,
+        expiresAt: expiresAt ? BigInt(expiresAt) : null,
+        maxPayments: maxPayments || 1,
+        depositPathIndex,
+        status: 'pending',
+        views: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      include: { payments: true },
     });
+
+    const stored = toStoredRequest(row);
+    const payUrl = buildRequestUrl(stored.username, stored.slug);
+
+    return reply.status(201).send({ ...stored, payUrl });
   });
 
   /**
@@ -142,27 +227,34 @@ export async function requestRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { recordView?: string } }>(
     '/:id',
     async (request, reply) => {
-      const stored = requestStore.get(request.params.id);
+      const row = await prisma.paymentRequest.findUnique({
+        where: { id: request.params.id },
+        include: { payments: { orderBy: { paidAt: 'asc' } } },
+      });
 
-      if (!stored) {
+      if (!row) {
         return reply.status(404).send({ error: 'Payment request not found' });
       }
 
-      const out = normalizeRequest(stored);
-      checkExpiry(out);
+      let stored = toStoredRequest(row);
+      stored = await resolveStatus(stored);
+
       if (request.query.recordView === '1') {
-        out.views += 1;
-        out.updatedAt = Date.now();
+        await prisma.paymentRequest.update({
+          where: { id: stored.id },
+          data: { views: { increment: 1 }, updatedAt: BigInt(Date.now()) },
+        });
+        stored.views += 1;
       }
 
-      return reply.send(out);
+      return reply.send(stored);
     },
   );
 
   /**
    * GET /requests/by-creator/:creator
    *
-   * List payment requests for a creator.
+   * List payment requests for a creator (most recent first).
    */
   app.get<{ Params: { creator: string }; Querystring: { status?: string } }>(
     '/by-creator/:creator',
@@ -170,22 +262,19 @@ export async function requestRoutes(app: FastifyInstance) {
       const { creator } = request.params;
       const { status } = request.query;
 
-      const ids = requestsByCreator.get(creator);
-      if (!ids || ids.size === 0) {
-        return reply.send({ requests: [] });
-      }
+      const rows = await prisma.paymentRequest.findMany({
+        where: {
+          creator,
+          ...(status ? { status } : {}),
+        },
+        include: { payments: { orderBy: { paidAt: 'asc' } } },
+        orderBy: { createdAt: 'desc' },
+      });
 
-      let requests = Array.from(ids)
-        .map(id => normalizeRequest(requestStore.get(id)!))
-        .filter(Boolean);
-
-      requests.forEach(checkExpiry);
-
-      if (status) {
-        requests = requests.filter(r => r.status === status);
-      }
-
-      requests.sort((a, b) => b.createdAt - a.createdAt);
+      type RequestRow = Parameters<typeof toStoredRequest>[0];
+      const requests = await Promise.all(
+        rows.map((r: RequestRow) => resolveStatus(toStoredRequest(r))),
+      );
 
       return reply.send({ requests });
     },
@@ -194,36 +283,44 @@ export async function requestRoutes(app: FastifyInstance) {
   /**
    * POST /requests/:id/cancel
    *
-   * Cancel a pending payment request.
+   * Cancel a pending or partial payment request.
    */
   app.post<{ Params: { id: string }; Body: { creator: string } }>(
     '/:id/cancel',
     async (request, reply) => {
-      const stored = requestStore.get(request.params.id);
+      const row = await prisma.paymentRequest.findUnique({
+        where: { id: request.params.id },
+        include: { payments: true },
+      });
 
-      if (!stored) {
+      if (!row) {
         return reply.status(404).send({ error: 'Payment request not found' });
       }
 
-      if (stored.creator !== request.body.creator) {
+      if (row.creator !== request.body.creator) {
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
-      if (stored.status !== 'pending' && stored.status !== 'partial') {
-        return reply.status(400).send({ error: `Cannot cancel request with status: ${stored.status}` });
+      if (row.status !== 'pending' && row.status !== 'partial') {
+        return reply
+          .status(400)
+          .send({ error: `Cannot cancel request with status: ${row.status}` });
       }
 
-      stored.status = 'cancelled';
-      stored.updatedAt = Date.now();
+      const updated = await prisma.paymentRequest.update({
+        where: { id: row.id },
+        data: { status: 'cancelled', updatedAt: BigInt(Date.now()) },
+        include: { payments: true },
+      });
 
-      return reply.send(stored);
+      return reply.send(toStoredRequest(updated));
     },
   );
 
   /**
    * POST /requests/:id/payment
    *
-   * Record a payment against a request (called by indexer or client).
+   * Record a payment against a request.
    */
   app.post<{
     Params: { id: string };
@@ -231,74 +328,94 @@ export async function requestRoutes(app: FastifyInstance) {
   }>(
     '/:id/payment',
     async (request, reply) => {
-      const stored = requestStore.get(request.params.id);
+      const row = await prisma.paymentRequest.findUnique({
+        where: { id: request.params.id },
+        include: { payments: true },
+      });
 
-      if (!stored) {
+      if (!row) {
         return reply.status(404).send({ error: 'Payment request not found' });
       }
 
-      checkExpiry(stored);
+      let stored = toStoredRequest(row);
+      stored = await resolveStatus(stored);
 
       if (stored.status === 'expired' || stored.status === 'cancelled') {
         return reply.status(400).send({ error: `Request is ${stored.status}` });
       }
 
       const { txSignature, amount } = request.body;
+      const paidAt = BigInt(Date.now());
 
-      stored.payments.push({
-        txSignature,
-        amount,
-        paidAt: Date.now(),
+      // Append new payment
+      await prisma.payment.create({
+        data: { requestId: row.id, txSignature, amount, paidAt },
       });
 
-      const totalPaid = stored.payments.reduce((sum, p) => sum + p.amount, 0);
+      // Re-read with updated payments to compute new status
+      const refreshed = await prisma.paymentRequest.findUniqueOrThrow({
+        where: { id: row.id },
+        include: { payments: { orderBy: { paidAt: 'asc' } } },
+      });
+      const updated = toStoredRequest(refreshed);
+      const totalPaid = updated.payments.reduce((s, p) => s + p.amount, 0);
 
-      if (stored.openAmount) {
-        if (stored.payments.length >= stored.maxPayments) {
-          stored.status = 'paid';
-        } else if (totalPaid > 0) {
-          stored.status = 'partial';
-        }
+      let newStatus: PaymentStatus = updated.status as PaymentStatus;
+      if (updated.openAmount) {
+        if (updated.payments.length >= updated.maxPayments) newStatus = 'paid';
+        else if (totalPaid > 0) newStatus = 'partial';
       } else {
-        if (totalPaid >= stored.amount) {
-          stored.status = 'paid';
+        if (totalPaid >= updated.amount) {
+          newStatus = 'paid';
         } else if (totalPaid > 0) {
-          stored.status = 'partial';
+          newStatus = 'partial';
         }
-        if (stored.payments.length >= stored.maxPayments && stored.status !== 'paid') {
-          stored.status = 'paid';
+        if (updated.payments.length >= updated.maxPayments && newStatus !== 'paid') {
+          newStatus = 'paid';
         }
       }
 
-      stored.updatedAt = Date.now();
+      const final = await prisma.paymentRequest.update({
+        where: { id: row.id },
+        data: { status: newStatus, updatedAt: BigInt(Date.now()) },
+        include: { payments: { orderBy: { paidAt: 'asc' } } },
+      });
+
+      return reply.send(toStoredRequest(final));
+    },
+  );
+
+  /**
+   * GET /requests/by-slug/:username/:slug
+   *
+   * Resolve a payment request by its human-readable slug URL.
+   */
+  app.get<{ Params: { username: string; slug: string }; Querystring: { recordView?: string } }>(
+    '/by-slug/:username/:slug',
+    async (request, reply) => {
+      const { username, slug } = request.params;
+
+      const row = await prisma.paymentRequest.findUnique({
+        where: { username_slug: { username, slug } },
+        include: { payments: { orderBy: { paidAt: 'asc' } } },
+      });
+
+      if (!row) {
+        return reply.status(404).send({ error: 'Payment request not found' });
+      }
+
+      let stored = toStoredRequest(row);
+      stored = await resolveStatus(stored);
+
+      if (request.query.recordView === '1') {
+        await prisma.paymentRequest.update({
+          where: { id: stored.id },
+          data: { views: { increment: 1 }, updatedAt: BigInt(Date.now()) },
+        });
+        stored.views += 1;
+      }
 
       return reply.send(stored);
     },
   );
-}
-
-function checkExpiry(req: StoredRequest) {
-  if (req.status === 'pending' && req.expiresAt && Date.now() > req.expiresAt) {
-    req.status = 'expired';
-    req.updatedAt = Date.now();
-  }
-}
-
-function buildRequestUrl(
-  username: string,
-  id: string,
-  amount: number,
-  token: string,
-  memo: string,
-  expiresAt?: number,
-  openAmount?: boolean,
-): string {
-  const params = new URLSearchParams();
-  params.set('amount', amount.toString());
-  params.set('token', token);
-  if (memo) params.set('memo', memo);
-  if (expiresAt) params.set('expires', expiresAt.toString());
-  if (openAmount) params.set('open', '1');
-  const path = `/${encodeURIComponent(username)}/request/${id}?${params.toString()}`;
-  return `${config.webAppPublicUrl}${path}`;
 }
