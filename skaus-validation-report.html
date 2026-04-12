@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SKAUS — Idea Validation Report</title>
+  <style>
+    :root {
+      --bg: #0e0e12;
+      --surface: #16161e;
+      --border: #2a2a3a;
+      --accent: #9945ff;
+      --accent2: #14f195;
+      --warn: #f7a429;
+      --danger: #ff4d6a;
+      --text: #e2e2f0;
+      --muted: #6e6e8a;
+      --go: #14f195;
+      --nogo: #ff4d6a;
+      --pivot: #f7a429;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout */
+    .container { max-width: 860px; margin: 0 auto; padding: 0 24px 80px; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 40px 0 32px;
+      margin-bottom: 40px;
+    }
+    header .tag {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    header .meta { color: var(--muted); font-size: 13px; }
+
+    /* Verdict banner */
+    .verdict {
+      background: linear-gradient(135deg, #0f2a1a 0%, #0a1a2e 100%);
+      border: 1px solid var(--go);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 40px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .verdict-badge {
+      flex-shrink: 0;
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      border: 2px solid var(--go);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--go);
+      letter-spacing: -1px;
+    }
+    .verdict-text h2 { font-size: 22px; font-weight: 700; color: var(--go); }
+    .verdict-text p { color: var(--text); margin-top: 4px; font-size: 15px; }
+    .verdict-text .conf { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+    /* Score bar */
+    .score-section { margin-bottom: 40px; }
+    .score-section h2 { font-size: 16px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px; }
+    .score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .score-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 14px;
+      text-align: center;
+    }
+    .score-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    .score-card .score-val { font-size: 26px; font-weight: 800; }
+    .score-card .score-max { font-size: 12px; color: var(--muted); }
+    .score-card.good .score-val { color: var(--go); }
+    .score-card.mid .score-val { color: var(--warn); }
+    .score-card.low .score-val { color: var(--danger); }
+    .total-bar {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 20px;
+    }
+    .total-bar .label { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+    .bar-track { flex: 1; background: var(--border); border-radius: 4px; height: 10px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--go)); }
+    .total-bar .num { font-size: 16px; font-weight: 700; color: var(--go); flex-shrink: 0; }
+
+    /* Section */
+    section { margin-bottom: 40px; }
+    section h2 { font-size: 16px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 12px;
+    }
+    .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .card p, .card li { font-size: 14px; color: #b0b0c8; }
+    .card ul { padding-left: 18px; }
+    .card ul li { margin-bottom: 4px; }
+
+    /* Signal cards */
+    .signal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 10px;
+      display: flex; gap: 14px; align-items: flex-start;
+    }
+    .signal-badge {
+      flex-shrink: 0;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .signal-badge.strong { background: rgba(20,241,149,0.15); color: var(--go); }
+    .signal-badge.moderate { background: rgba(247,164,41,0.15); color: var(--warn); }
+    .signal-badge.weak { background: rgba(255,77,106,0.12); color: var(--danger); }
+    .signal-text .title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .signal-text .desc { font-size: 13px; color: var(--muted); }
+
+    /* Risk table */
+    .risk-table { width: 100%; border-collapse: collapse; }
+    .risk-table th {
+      text-align: left; font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+    }
+    .risk-table td {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      font-size: 13px; vertical-align: top;
+    }
+    .risk-table tr:last-child td { border-bottom: none; }
+    .severity {
+      display: inline-block;
+      padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .severity.high { background: rgba(255,77,106,0.15); color: var(--danger); }
+    .severity.medium { background: rgba(247,164,41,0.15); color: var(--warn); }
+    .severity.low { background: rgba(20,241,149,0.12); color: var(--go); }
+
+    /* Go criteria */
+    .criteria-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .criteria-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .criteria-item .icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+    .criteria-item .text { font-size: 13px; }
+    .criteria-item .text strong { display: block; font-size: 14px; margin-bottom: 2px; }
+    .criteria-item .text span { color: var(--muted); }
+
+    /* Competition table */
+    .comp-table { width: 100%; border-collapse: collapse; }
+    .comp-table th {
+      text-align: left; font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+    }
+    .comp-table td {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .comp-table tr:last-child td { border-bottom: none; }
+    .threat-pill {
+      display: inline-block;
+      padding: 2px 9px; border-radius: 10px;
+      font-size: 11px; font-weight: 600;
+    }
+    .threat-pill.high { background: rgba(255,77,106,0.15); color: var(--danger); }
+    .threat-pill.medium { background: rgba(247,164,41,0.15); color: var(--warn); }
+    .threat-pill.low { background: rgba(20,241,149,0.12); color: var(--go); }
+
+    /* Next steps */
+    .steps-list { counter-reset: steps; }
+    .step {
+      counter-increment: steps;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px 16px 56px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    .step::before {
+      content: counter(steps);
+      position: absolute; left: 20px; top: 16px;
+      width: 24px; height: 24px;
+      background: rgba(153,69,255,0.2);
+      color: var(--accent);
+      border-radius: 50%;
+      font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .step p { font-size: 13px; color: var(--muted); }
+
+    /* Integration assessment */
+    .integration-box {
+      background: rgba(153,69,255,0.08);
+      border: 1px solid rgba(153,69,255,0.3);
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-bottom: 12px;
+    }
+    .integration-box h3 { color: var(--accent); font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .integration-box p { font-size: 13px; color: #b0b0c8; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+      margin-top: 60px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    footer .skill { color: var(--accent); font-weight: 500; }
+
+    @media (max-width: 600px) {
+      .score-grid { grid-template-columns: repeat(3, 1fr); }
+      .criteria-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="tag">Validation Sprint · Phase 1 — Idea</div>
+    <h1>SKAUS — Privacy-Preserving Payments on Solana</h1>
+    <div class="meta">Validated April 12, 2026 · superstack/validate-idea · skaus monorepo</div>
+  </header>
+
+  <!-- VERDICT -->
+  <div class="verdict">
+    <div class="verdict-badge">GO</div>
+    <div class="verdict-text">
+      <h2>Verdict: GO</h2>
+      <p>Strong technical foundation, real market demand, and exceptional team depth. The primary work ahead is distribution and enterprise positioning — not more engineering.</p>
+      <div class="conf">Confidence: <strong style="color: var(--go)">0.78</strong> · Score: <strong style="color: var(--go)">10 / 15</strong> (threshold ≥ 8)</div>
+    </div>
+  </div>
+
+  <!-- SCORECARD -->
+  <div class="score-section">
+    <h2>Scorecard</h2>
+    <div class="score-grid">
+      <div class="score-card good">
+        <div class="label">Founder Fit</div>
+        <div class="score-val">3<span class="score-max">/3</span></div>
+      </div>
+      <div class="score-card good">
+        <div class="label">MVP Speed</div>
+        <div class="score-val">3<span class="score-max">/3</span></div>
+      </div>
+      <div class="score-card low">
+        <div class="label">Distribution</div>
+        <div class="score-val">1<span class="score-max">/3</span></div>
+      </div>
+      <div class="score-card mid">
+        <div class="label">Market Pull</div>
+        <div class="score-val">2<span class="score-max">/3</span></div>
+      </div>
+      <div class="score-card low">
+        <div class="label">Revenue</div>
+        <div class="score-val">1<span class="score-max">/3</span></div>
+      </div>
+    </div>
+    <div class="total-bar">
+      <span class="label">Total</span>
+      <div class="bar-track"><div class="bar-fill" style="width: 66.6%"></div></div>
+      <span class="num">10 / 15</span>
+    </div>
+  </div>
+
+  <!-- PRODUCT SUMMARY -->
+  <section>
+    <h2>What You're Building</h2>
+    <div class="card">
+      <h3>Core Innovation</h3>
+      <p>SKAUS is a privacy-preserving payment protocol on Solana. Senders deposit SOL/USDC into a shared stealth pool; recipients withdraw using Groth16 ZK proofs — without revealing their identity or wallet. On top of this, a human-readable pay-link layer (e.g. <code>skaus.me/alice/coffee-tips</code>) provides the Stripe-like UX layer for creators, freelancers, and businesses.</p>
+    </div>
+    <div class="card">
+      <h3>Key Differentiators vs. Alternatives</h3>
+      <ul>
+        <li><strong>Gasless relayer:</strong> Recipients never pay gas — relayer submits withdrawal and deducts a small fee from the amount.</li>
+        <li><strong>PIN-based key management:</strong> No cloud key storage; keys derived on-demand from PIN + wallet signature via HKDF. No separate hardware wallet required.</li>
+        <li><strong>Human-readable pay links:</strong> Username-based URLs with full link analytics (views, payment counts, revenue). Competes with Helio/TipLink on UX, not just crypto.</li>
+        <li><strong>Anonymity set uniformity:</strong> Fixed deposit tiers (power-of-10) ensure every note in the pool is indistinguishable — stronger privacy guarantees than variable-amount schemes.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- DEMAND SIGNALS -->
+  <section>
+    <h2>Demand Signals</h2>
+
+    <div class="signal-card">
+      <div><span class="signal-badge strong">Strong</span></div>
+      <div class="signal-text">
+        <div class="title">Solana Foundation Privacy Hack 2026 — $100k+ in prizes</div>
+        <div class="desc">The Foundation made privacy a strategic priority with a dedicated hackathon. This is institutional signal, not just community sentiment.</div>
+      </div>
+    </div>
+
+    <div class="signal-card">
+      <div><span class="signal-badge strong">Strong</span></div>
+      <div class="signal-text">
+        <div class="title">GhostWare GhostPay has a live B2B pilot with Zebec (on-chain payroll)</div>
+        <div class="desc">A direct competitor is actively building and already has a paying enterprise partner. This validates that businesses will pay for payment privacy — but also signals urgency to differentiate.</div>
+      </div>
+    </div>
+
+    <div class="signal-card">
+      <div><span class="signal-badge moderate">Moderate</span></div>
+      <div class="signal-text">
+        <div class="title">Elusiv raised $3.5M before pivoting to Arcium</div>
+        <div class="desc">Investor demand for Solana privacy protocols is real. Elusiv's pivot to a broader encrypted computation platform (not a failure) shows the market wants privacy infrastructure — the standalone privacy tool thesis needed expanding.</div>
+      </div>
+    </div>
+
+    <div class="signal-card">
+      <div><span class="signal-badge moderate">Moderate</span></div>
+      <div class="signal-text">
+        <div class="title">EIP-5564 stealth address standard live on Ethereum + L2s</div>
+        <div class="desc">Ethereum validated the stealth address architecture with a formal EIP. Early adoption shows demand is real, but also that UX barriers (proof gen speed, note scanning) remain the bottleneck — SKAUS must solve these.</div>
+      </div>
+    </div>
+
+    <div class="signal-card">
+      <div><span class="signal-badge moderate">Moderate</span></div>
+      <div class="signal-text">
+        <div class="title">Post-Tornado Cash: Sanctions lifted March 2025, regulatory wind is shifting</div>
+        <div class="desc">Fifth Circuit ruling protects immutable contracts. OFAC delisted Tornado Cash. Privacy tool builders have more legal clarity than at any point since 2022. Window is open — but compliance hooks are table stakes.</div>
+      </div>
+    </div>
+
+    <div class="signal-card">
+      <div><span class="signal-badge weak">Weak</span></div>
+      <div class="signal-text">
+        <div class="title">General "crypto users want privacy" sentiment</div>
+        <div class="desc">This is noise, not signal. Do not build based on this alone. The strong signals above are what carry the thesis.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CRYPTO NECESSITY CHECK -->
+  <section>
+    <h2>Crypto Necessity Check</h2>
+    <div class="card" style="border-color: var(--go);">
+      <h3 style="color: var(--go);">✓ Crypto is necessary — the blockchain is load-bearing</h3>
+      <p style="margin-top: 8px;">Without Solana: You'd need a custodian to hold funds and a central server to route payments — that's just Venmo with extra steps, and the privacy claim collapses the moment the custodian is subpoenaed. The Groth16 ZK proof, nullifier-based double-spend prevention, and on-chain merkle tree are all doing real work. Removing the blockchain breaks the product entirely.</p>
+    </div>
+  </section>
+
+  <!-- GO CRITERIA -->
+  <section>
+    <h2>Go / No-Go Criteria</h2>
+    <div class="criteria-list">
+      <div class="criteria-item">
+        <div class="icon">✅</div>
+        <div class="text"><strong>Demand score ≥ 2</strong><span>Score is 2/3 (moderate). Two strong independent signals: Foundation hackathon + live competitor B2B pilot.</span></div>
+      </div>
+      <div class="criteria-item">
+        <div class="icon">✅</div>
+        <div class="text"><strong>Technical feasibility</strong><span>Hard but solvable — and mostly already solved. Groth16 verifier, stealth scan, relayer, and pay links are all implemented.</span></div>
+      </div>
+      <div class="criteria-item">
+        <div class="icon">✅</div>
+        <div class="text"><strong>Time to MVP ≤ 2 weeks</strong><span>You're past MVP — currently in devnet beta with a full stack deployed on Railway.</span></div>
+      </div>
+      <div class="criteria-item">
+        <div class="icon">✅</div>
+        <div class="text"><strong>Unfair advantage</strong><span>Rare combination of ZK circuit design (Circom/Groth16), Solana Anchor, and product UX thinking. Few teams have all three.</span></div>
+      </div>
+      <div class="criteria-item">
+        <div class="icon">✅</div>
+        <div class="text"><strong>Crypto is necessary</strong><span>Completely. Removing the blockchain destroys the privacy guarantee. The ZK proof and on-chain nullifier tree are the product.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPETITION -->
+  <section>
+    <h2>Competitive Landscape</h2>
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Competitor</th>
+            <th>What they do</th>
+            <th>Threat level</th>
+            <th>SKAUS advantage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>GhostWare (GhostPay)</strong></td>
+            <td>Private SOL/USDC payments + GhostSend; live B2B pilot w/ Zebec</td>
+            <td><span class="threat-pill high">HIGH</span></td>
+            <td>Pay links UX, gasless relayer, PIN key management</td>
+          </tr>
+          <tr>
+            <td><strong>Arcium (ex-Elusiv)</strong></td>
+            <td>General encrypted computation platform; 25+ ecosystem projects</td>
+            <td><span class="threat-pill low">LOW</span></td>
+            <td>Different lane — infra vs. payment product</td>
+          </tr>
+          <tr>
+            <td><strong>Privacy Cash</strong></td>
+            <td>Basic private SOL/USDT/USDC protocol</td>
+            <td><span class="threat-pill medium">MEDIUM</span></td>
+            <td>Weaker UX; no pay link layer; less technical depth</td>
+          </tr>
+          <tr>
+            <td><strong>Helio</strong></td>
+            <td>Merchant payments, auto fiat off-ramp; acquired by MoonPay for $175M</td>
+            <td><span class="threat-pill low">LOW</span></td>
+            <td>No privacy; different customer (mainstream merchants)</td>
+          </tr>
+          <tr>
+            <td><strong>TipLink</strong></td>
+            <td>Link-based wallet onboarding via Google login</td>
+            <td><span class="threat-pill low">LOW</span></td>
+            <td>No privacy features; onboarding tool not payment tool</td>
+          </tr>
+          <tr>
+            <td><strong>Umbra (Ethereum)</strong></td>
+            <td>EIP-5564 stealth addresses on Ethereum mainnet</td>
+            <td><span class="threat-pill low">LOW</span></td>
+            <td>Different chain; no Solana presence; no pay link layer</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RISK MAP -->
+  <section>
+    <h2>Risk Map</h2>
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+      <table class="risk-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Risk</th>
+            <th>Severity</th>
+            <th>Mitigation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Distribution</strong></td>
+            <td>Privacy-seekers are hard to find/reach. Cold acquisition will be expensive.</td>
+            <td><span class="severity high">High</span></td>
+            <td>Go B2B first. Target on-chain payroll (Zebec, Streamflow), DeFi protocols, NGOs/activists.</td>
+          </tr>
+          <tr>
+            <td><strong>Regulatory</strong></td>
+            <td>Developer liability remains despite Tornado Cash reversal. Roman Storm was convicted.</td>
+            <td><span class="severity high">High</span></td>
+            <td>Add compliance hooks: selective regulator disclosure, optional audit trail. Align with Solana's Confidential Balances framework.</td>
+          </tr>
+          <tr>
+            <td><strong>Competition</strong></td>
+            <td>GhostWare has a live B2B partnership and first-mover advantage in enterprise.</td>
+            <td><span class="severity medium">Medium</span></td>
+            <td>Win on UX: pay links, gasless relayer, human-readable URLs are clear product advantages today.</td>
+          </tr>
+          <tr>
+            <td><strong>Monetization</strong></td>
+            <td>Relay fee (BPS) model generates thin margins. Revenue path is unclear at scale.</td>
+            <td><span class="severity medium">Medium</span></td>
+            <td>Introduce tiered pricing: free personal links, paid business tier (analytics, branding, webhooks).</td>
+          </tr>
+          <tr>
+            <td><strong>Technical</strong></td>
+            <td>ZK proof generation time on mobile/low-end devices may degrade UX.</td>
+            <td><span class="severity low">Low</span></td>
+            <td>Benchmark proof gen on low-end devices before mainnet. Explore WASM optimization or server-side proving as fallback.</td>
+          </tr>
+          <tr>
+            <td><strong>Market</strong></td>
+            <td>B2B enterprise sales cycles are long. Early cash flow could be an issue.</td>
+            <td><span class="severity low">Low</span></td>
+            <td>Monetize consumer pay links first (subscription tier) to bridge to enterprise.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- INTEGRATION ASSESSMENT -->
+  <section>
+    <h2>Integration vs. Build Assessment</h2>
+    <div class="integration-box">
+      <h3>Custom Build — Correct Call</h3>
+      <p>SKAUS is building the protocol layer itself (stealth pool program, ZK verifier, name registry). This is not a product that can be assembled from existing Solana protocols — the core value <em>is</em> the novel on-chain logic. Integrate-first would have meant no privacy guarantees and no novel moat. The custom build decision is validated.</p>
+    </div>
+    <div class="card">
+      <h3>Where integration makes sense going forward</h3>
+      <ul>
+        <li><strong>Token infrastructure:</strong> Use SPL Token / Token-2022 natively — no need to build token handling.</li>
+        <li><strong>Fiat off-ramp:</strong> Integrate Helio or MoonPay for merchants who want auto-fiat settlement.</li>
+        <li><strong>Indexing:</strong> Consider Helius webhooks or Triton to replace the custom deposit indexer polling loop.</li>
+        <li><strong>Analytics:</strong> Use existing dashboard SDKs for pay link analytics rather than building from scratch.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- NEXT STEPS -->
+  <section>
+    <h2>Next Steps</h2>
+    <div class="steps-list">
+      <div class="step">
+        <h4>Add compliance hooks before mainnet launch</h4>
+        <p>Implement selective disclosure: an opt-in mode that generates an audit trail (HMAC-signed spend log) that only the user can share with regulators. This removes the biggest legal liability and enables enterprise adoption. See Solana's Confidential Balances framework for precedent.</p>
+      </div>
+      <div class="step">
+        <h4>Differentiate from GhostWare via pay link UX — ship it fast</h4>
+        <p>Your human-readable pay links, QR codes, link analytics, and gasless withdrawal are already built. GhostWare does not have this. Publish a public demo and tweet about it. This is your current moat and it won't last long.</p>
+      </div>
+      <div class="step">
+        <h4>Target B2B for initial revenue: on-chain payroll + DeFi protocols</h4>
+        <p>Reach out to Streamflow, Zebec (GhostWare's pilot partner — steal the deal), and any DeFi protocol that pays contributors on-chain. These buyers understand privacy, have budget, and make purchase decisions fast.</p>
+      </div>
+      <div class="step">
+        <h4>Apply for Solana Foundation Privacy Hack grants</h4>
+        <p>The Foundation is actively funding privacy tooling. SKAUS is exactly what they want to fund. Apply immediately. This also serves as a credibility signal for enterprise buyers.</p>
+      </div>
+      <div class="step">
+        <h4>Benchmark ZK proof generation on low-end devices before mainnet</h4>
+        <p>Run proof gen on a budget Android device (Snapdragon 662 or equivalent). If it takes >5 seconds, optimize the WASM bundle or introduce a relayed proving fallback (user sends encrypted note, relayer generates proof). Decide before mainnet not after.</p>
+      </div>
+      <div class="step">
+        <h4>Define a monetization path beyond relay fees</h4>
+        <p>Relay BPS fees are correct for bootstrapping but thin at scale. Design a "Business tier" for pay links: custom branding, webhook notifications, team access, CSV export. This creates recurring SaaS revenue on top of the protocol layer.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Generated by <span class="skill">superstack/validate-idea</span> · solana.new</span>
+    <span>April 12, 2026 · SKAUS</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -166,8 +166,8 @@ export function DashboardShell({ title, headerRight, children }: DashboardShellP
         </div>
       </aside>
 
-      <main className="flex-1 min-h-screen">
-        <header className="sticky top-0 z-30 bg-skaus-dark/80 backdrop-blur-xl border-b border-skaus-border px-6 lg:px-10 py-4 flex items-center justify-between gap-4">
+      <main className="flex-1 min-w-0 min-h-screen min-h-[100dvh] overflow-x-clip">
+        <header className="sticky top-0 z-30 bg-skaus-dark/80 backdrop-blur-xl border-b border-skaus-border px-4 sm:px-6 lg:px-10 py-4 flex flex-wrap items-center justify-between gap-3 gap-y-2">
           <div className="flex items-center gap-4 min-w-0">
             <button
               type="button"

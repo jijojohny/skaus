@@ -31,10 +31,22 @@ const config: Config = {
         display: ['Inter', 'system-ui', 'sans-serif'],
       },
       fontSize: {
-        'display-xl': ['5rem', { lineHeight: '1', letterSpacing: '-0.04em', fontWeight: '900' }],
-        'display-lg': ['3.5rem', { lineHeight: '1.05', letterSpacing: '-0.03em', fontWeight: '800' }],
-        'display-md': ['2.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' }],
-        'display-sm': ['1.75rem', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '700' }],
+        'display-xl': [
+          'clamp(2.25rem, 9vw + 1rem, 5rem)',
+          { lineHeight: '1', letterSpacing: '-0.04em', fontWeight: '900' },
+        ],
+        'display-lg': [
+          'clamp(1.875rem, 5.5vw + 0.85rem, 3.5rem)',
+          { lineHeight: '1.05', letterSpacing: '-0.03em', fontWeight: '800' },
+        ],
+        'display-md': [
+          'clamp(1.5rem, 3.8vw + 0.65rem, 2.5rem)',
+          { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' },
+        ],
+        'display-sm': [
+          'clamp(1.25rem, 2.2vw + 0.85rem, 1.75rem)',
+          { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '700' },
+        ],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

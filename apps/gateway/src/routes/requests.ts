@@ -46,18 +46,13 @@ function toSlug(text: string): string {
 }
 
 /**
- * Ensure slug is unique for this username by appending a counter if needed.
+ * Returns true if the slug is already taken for this username.
  */
-async function uniqueSlug(username: string, base: string): Promise<string> {
-  let slug = base;
-  let attempt = 2;
-  while (true) {
-    const existing = await prisma.paymentRequest.findUnique({
-      where: { username_slug: { username, slug } },
-    });
-    if (!existing) return slug;
-    slug = `${base}-${attempt++}`;
-  }
+async function slugExists(username: string, slug: string): Promise<boolean> {
+  const existing = await prisma.paymentRequest.findUnique({
+    where: { username_slug: { username, slug } },
+  });
+  return !!existing;
 }
 
 /** Expand a DB row + its payments into the legacy StoredRequest shape. */
@@ -189,7 +184,11 @@ export async function requestRoutes(app: FastifyInstance) {
     const id = randomUUID();
     const now = BigInt(Date.now());
     const linkTitle = (title && String(title).trim()) || 'Payment link';
-    const slug = await uniqueSlug(username, toSlug(linkTitle));
+    const slug = toSlug(linkTitle);
+
+    if (await slugExists(username, slug)) {
+      return reply.status(409).send({ error: `A link named "${slug}" already exists. Choose a different title.` });
+    }
 
     const row = await prisma.paymentRequest.create({
       data: {

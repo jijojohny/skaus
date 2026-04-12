@@ -186,7 +186,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
   if (loading) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
+      <main className="flex items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4">
         <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
       </main>
     );
@@ -194,7 +194,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
 
   if (notFound) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen px-6">
+      <main className="flex flex-col items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4 sm:px-6">
         <div className="absolute inset-0 grid-bg" />
         <div className="relative z-10 text-center space-y-4">
           <h1 className="text-display-md text-white">@{username}</h1>
@@ -208,11 +208,11 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   }
 
   return (
-    <main className="relative flex flex-col items-center min-h-screen px-6 py-12">
+    <main className="relative flex flex-col items-center min-h-screen min-h-[100dvh] overflow-x-clip px-4 sm:px-6 py-10 sm:py-12">
       <div className="absolute inset-0 grid-bg" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[min(37.5rem,calc(100vw-1.5rem))] h-[min(25rem,45vh)] bg-skaus-primary/5 blur-[150px] rounded-full" />
 
-      <div className="relative z-10 w-full max-w-md space-y-6">
+      <div className="relative z-10 w-full max-w-md min-w-0 space-y-6">
         {/* Avatar + Identity */}
         <div className="text-center space-y-3">
           <div className="mx-auto w-20 h-20 rounded-2xl bg-skaus-primary/20 border border-skaus-primary/30 flex items-center justify-center text-3xl font-black text-skaus-primary">

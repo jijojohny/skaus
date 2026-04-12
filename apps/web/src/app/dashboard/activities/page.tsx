@@ -6,7 +6,7 @@ import { DashboardShell } from '@/components/DashboardShell';
 export default function ActivitiesPage() {
   return (
     <DashboardShell title="Activities">
-      <div className="px-6 lg:px-10 py-16 max-w-lg mx-auto text-center space-y-4">
+      <div className="px-4 sm:px-6 lg:px-10 py-12 sm:py-16 max-w-lg mx-auto text-center space-y-4">
         <p className="text-skaus-muted text-sm">
           Activity history and filters live on the main dashboard for now.
         </p>

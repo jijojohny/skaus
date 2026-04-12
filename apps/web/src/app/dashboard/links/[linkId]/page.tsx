@@ -28,7 +28,7 @@ export default function LinkDetailPage({ params }: { params: { linkId: string } 
       .catch(() => setError('Link not found'));
   }, [linkId, walletAddress]);
 
-  const url = req ? getPaymentRequestUrl(req.username, req.id) : '';
+  const url = req ? getPaymentRequestUrl(req.username, req.slug) : '';
   const revenue =
     req?.payments?.reduce((s, p) => s + p.amount, 0) ?? 0;
 
@@ -71,7 +71,7 @@ export default function LinkDetailPage({ params }: { params: { linkId: string } 
         </Link>
       }
     >
-      <div className="px-6 lg:px-10 py-8 max-w-lg mx-auto space-y-6">
+      <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-lg mx-auto space-y-6">
         {error && <p className="text-sm text-skaus-warning text-center">{error}</p>}
 
         <div className="flex justify-center">

@@ -123,7 +123,7 @@ export default function PayPage({ params }: PayPageProps) {
   const showProgress = authenticated && !showForm;
 
   return (
-    <main className="pay-link-page flex flex-col items-center px-4 pb-12 pt-8 sm:pt-10">
+    <main className="pay-link-page flex flex-col items-center min-h-[100dvh] overflow-x-clip px-4 pt-8 sm:pt-10 pb-[calc(3rem+env(safe-area-inset-bottom,0px))]">
       <header className="relative z-10 mb-8 flex w-full max-w-lg items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2.5 text-neutral-900 no-underline">
           <SkausMark className="h-9 w-9 shrink-0 rounded-[10px] shadow-sm" />

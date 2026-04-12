@@ -48,7 +48,7 @@ export default function PersonalLinkDetailPage() {
         </Link>
       }
     >
-      <div className="px-6 lg:px-10 py-8 max-w-lg mx-auto space-y-6">
+      <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-lg mx-auto space-y-6">
         <div className="flex justify-center">
           <div className="w-24 h-24 rounded-full bg-skaus-primary/20 border border-skaus-primary/30 flex items-center justify-center text-3xl font-black text-skaus-primary">
             {(registeredName || '?')[0].toUpperCase()}

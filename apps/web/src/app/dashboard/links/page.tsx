@@ -63,7 +63,7 @@ export default function DashboardLinksPage() {
 
   return (
     <DashboardShell title="Links">
-      <div className="px-6 lg:px-10 py-8 max-w-5xl">
+      <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-5xl w-full mx-auto min-w-0">
         {!registeredName && !loading && (
           <p className="text-sm text-skaus-warning mb-6 border border-skaus-warning/30 rounded-xl p-4 bg-skaus-warning/5">
             Complete onboarding to claim a username and share your main pay link.
@@ -136,7 +136,7 @@ export default function DashboardLinksPage() {
           )}
 
           {requests.map(req => {
-            const url = getPaymentRequestUrl(req.username, req.id);
+            const url = getPaymentRequestUrl(req.username, req.slug);
             const payCount = req.payments?.length ?? 0;
             return (
               <div

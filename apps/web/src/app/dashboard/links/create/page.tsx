@@ -95,7 +95,12 @@ export default function CreateLinkPage() {
       });
       router.push(`/dashboard/links/${data.id}`);
     } catch (e: any) {
-      setError(e.message || 'Failed to create link');
+      const msg: string = e.message || '';
+      setError(
+        msg.includes('already exists')
+          ? msg
+          : 'Failed to create link. Try a different title.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +125,7 @@ export default function CreateLinkPage() {
         )
       }
     >
-      <div className="px-6 lg:px-10 py-8 max-w-xl mx-auto">
+      <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-xl mx-auto">
         {step === 'template' && (
           <div className="space-y-8">
             <div>

@@ -151,7 +151,7 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
   if (loading) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
+      <main className="flex items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4">
         <div className="w-8 h-8 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
       </main>
     );
@@ -159,7 +159,7 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
 
   if (!request) {
     return (
-      <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
+      <main className="relative flex flex-col items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4 sm:px-6">
         <div className="absolute inset-0 grid-bg" />
         <div className="relative z-10 text-center space-y-4">
           <h1 className="text-display-sm text-white">Request Not Found</h1>
@@ -178,11 +178,11 @@ export default function PaymentRequestPage({ params }: RequestPageProps) {
   const canPay = !isExpired && !isPaid && !isCancelled;
 
   return (
-    <main className="relative flex flex-col items-center justify-center min-h-screen px-6">
+    <main className="relative flex flex-col items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4 sm:px-6">
       <div className="absolute inset-0 grid-bg" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[min(37.5rem,calc(100vw-1.5rem))] h-[min(25rem,45vh)] bg-skaus-primary/5 blur-[150px] rounded-full" />
 
-      <div className="relative z-10 w-full max-w-md space-y-6">
+      <div className="relative z-10 w-full max-w-md min-w-0 space-y-6">
         <div className="text-center space-y-2">
           <p className="section-label">Payment request</p>
           <h1 className="text-xl font-bold text-white">{request.title || 'Payment request'}</h1>

@@ -1,10 +1,17 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { PrivyAuthProvider } from '@/components/PrivyAuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'SKAUS — Private Payments on Solana',
   description: 'Get paid. Stay private. Privacy-preserving payment infrastructure on Solana with stealth addresses and ZK proofs.',
+};
+
+/** Lets `env(safe-area-inset-*)` apply so embedded wallet / Privy sheets clear notches & home indicators. */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -22,7 +29,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen">
+      <body className="min-h-screen min-h-[100dvh] overflow-x-clip">
         <PrivyAuthProvider>
           {children}
         </PrivyAuthProvider>

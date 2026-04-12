@@ -397,7 +397,7 @@ export default function DashboardPage() {
           </>
         }
       >
-        <div className="px-6 lg:px-10 py-8 space-y-6 max-w-5xl">
+        <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 space-y-6 max-w-5xl w-full mx-auto min-w-0">
           {scanError && (
             <div className="flex items-center gap-3 p-3 bg-skaus-warning/5 border border-skaus-warning/20 rounded-xl text-sm text-skaus-warning">
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -739,13 +739,13 @@ export default function DashboardPage() {
                         href={`https://explorer.solana.com/tx/${deposit.withdrawTx}?cluster=devnet`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 ml-12 text-[10px] text-skaus-success hover:underline block font-mono"
+                        className="mt-2 ml-0 sm:ml-12 text-[10px] text-skaus-success hover:underline block font-mono break-all"
                       >
                         TX: {deposit.withdrawTx.slice(0, 32)}...
                       </a>
                     )}
                     {deposit.withdrawError && (
-                      <p className="mt-2 ml-12 text-[10px] text-skaus-error">{deposit.withdrawError}</p>
+                      <p className="mt-2 ml-0 sm:ml-12 text-[10px] text-skaus-error break-words">{deposit.withdrawError}</p>
                     )}
                   </div>
                 ))}
@@ -758,12 +758,12 @@ export default function DashboardPage() {
       {/* Scan PIN modal */}
       {showScanModal && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4 pb-safe-modal sm:pb-4 overflow-y-auto"
           onClick={() => { if (!scanning) { setShowScanModal(false); setModalPin(['', '', '', '', '', '']); setModalPinError(''); } }}
           role="presentation"
         >
           <div
-            className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-sm w-full space-y-5 animate-scale-in shadow-xl"
+            className="bg-skaus-surface border border-skaus-border rounded-2xl p-5 sm:p-6 max-w-sm w-full max-h-[min(32rem,85dvh)] overflow-y-auto space-y-5 animate-scale-in shadow-xl my-auto"
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-labelledby="scan-modal-title"
@@ -786,7 +786,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap">
               {modalPin.map((digit, i) => (
                 <div key={i} className="flex items-center">
                   <input
@@ -799,7 +799,7 @@ export default function DashboardPage() {
                     onChange={e => handleModalPinInput(i, e.target.value)}
                     onKeyDown={e => handleModalPinKeyDown(i, e)}
                     onKeyUp={e => { if (e.key === 'Enter' && modalPin.join('').length === 6) void handleScanFromModal(); }}
-                    className={`w-11 h-13 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
+                    className={`w-9 h-12 sm:w-11 sm:h-[3.25rem] text-center text-lg sm:text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
                       digit ? 'border-skaus-primary text-white' : 'border-skaus-border text-skaus-muted'
                     } focus:border-skaus-primary focus:ring-1 focus:ring-skaus-primary/30`}
                   />
@@ -842,12 +842,12 @@ export default function DashboardPage() {
       {/* QR code for personalised pay link */}
       {showQrModal && registeredName && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4 pb-safe-modal sm:pb-4 overflow-y-auto"
           onClick={() => setShowQrModal(false)}
           role="presentation"
         >
           <div
-            className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-sm w-full space-y-4 animate-scale-in shadow-xl"
+            className="bg-skaus-surface border border-skaus-border rounded-2xl p-5 sm:p-6 max-w-sm w-full max-h-[min(36rem,90dvh)] overflow-y-auto space-y-4 animate-scale-in shadow-xl my-auto"
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-labelledby="qr-modal-title"
@@ -866,14 +866,16 @@ export default function DashboardPage() {
               </button>
             </div>
             <p className="text-xs text-skaus-muted">Scan to open your public pay page.</p>
-            <div className="flex justify-center p-4 rounded-xl bg-white">
-              <QRCode
-                value={getPublicProfileUrl(registeredName)}
-                size={220}
-                level="M"
-                fgColor="#0f172a"
-                bgColor="#ffffff"
-              />
+            <div className="flex justify-center p-3 sm:p-4 rounded-xl bg-white">
+              <div className="w-full max-w-[200px] aspect-square [&_svg]:h-auto [&_svg]:w-full">
+                <QRCode
+                  value={getPublicProfileUrl(registeredName)}
+                  size={200}
+                  level="M"
+                  fgColor="#0f172a"
+                  bgColor="#ffffff"
+                />
+              </div>
             </div>
             <p className="text-[11px] font-mono text-skaus-muted break-all text-center">
               {getPublicProfileUrl(registeredName)}
@@ -891,8 +893,8 @@ export default function DashboardPage() {
 
       {/* Withdraw modal (single or bulk — one relay tx per deposit) */}
       {withdrawModalIds && withdrawModalIds.length > 0 && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-skaus-surface border border-skaus-border rounded-2xl p-6 max-w-md w-full space-y-4 animate-scale-in">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4 pb-safe-modal sm:pb-4 overflow-y-auto">
+          <div className="bg-skaus-surface border border-skaus-border rounded-2xl p-5 sm:p-6 max-w-md w-full max-h-[min(36rem,90dvh)] overflow-y-auto space-y-4 animate-scale-in my-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">
                 {withdrawModalIds.length > 1 ? `Withdraw ${withdrawModalIds.length} deposits` : 'Withdraw'}

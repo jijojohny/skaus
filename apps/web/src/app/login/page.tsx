@@ -148,13 +148,13 @@ function LoginContent() {
   }, [pinComplete, pinString, lookupResult, wallets, signMessage, router, redirect, name]);
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
+    <div className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 overflow-x-clip">
       <div className="absolute inset-0 grid-bg" />
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[min(37.5rem,calc(100vw-1.5rem))] h-[min(25rem,45vh)] bg-skaus-primary/5 blur-[150px] rounded-full" />
 
       <Link
         href="/"
-        className="absolute top-6 left-6 z-10 flex items-center gap-2 text-sm text-skaus-muted hover:text-white transition-colors"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-10 flex items-center gap-2 text-sm text-skaus-muted hover:text-white transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -162,7 +162,7 @@ function LoginContent() {
         Back
       </Link>
 
-      <div className="relative z-10 w-full max-w-sm space-y-8 animate-slide-up">
+      <div className="relative z-10 w-full max-w-sm min-w-0 space-y-8 animate-slide-up">
         {/* Logo */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-skaus-surface border border-skaus-border">
@@ -253,7 +253,7 @@ function LoginContent() {
                       disabled={step === 'verifying'}
                       onChange={(e) => handlePinInput(i, e.target.value)}
                       onKeyDown={(e) => handlePinKeyDown(i, e)}
-                      className={`w-12 h-14 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
+                      className={`w-9 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none disabled:opacity-50 ${
                         digit
                           ? 'border-skaus-primary text-white'
                           : 'border-skaus-border text-skaus-muted'

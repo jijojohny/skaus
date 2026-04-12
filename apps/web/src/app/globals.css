@@ -10,11 +10,14 @@
 
   html {
     scroll-behavior: smooth;
+    overflow-x: clip;
   }
 
   body {
     @apply bg-skaus-dark text-skaus-text antialiased;
     font-feature-settings: 'ss01' on, 'ss02' on, 'cv01' on;
+    overflow-x: clip;
+    min-height: 100dvh;
   }
 
   ::selection {
@@ -84,6 +87,11 @@
     text-wrap: balance;
   }
 
+  /* Modals / bottom sheets: keep content above gesture bar when safe-area is available */
+  .pb-safe-modal {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+
   .grid-bg {
     background-size: 60px 60px;
     background-image:
@@ -119,5 +127,20 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 0;
+  }
+}
+
+/*
+ * Privy (embedded wallet) uses a fixed bottom sheet on narrow viewports.
+ * On many phones the primary action sits under the system gesture / nav bar.
+ * Padding + dvh-based cap keeps "Approve" inside the scrollable, tappable area.
+ */
+@media (max-width: 440px) {
+  #privy-modal-content {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(
+      100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 28px
+    ) !important;
+    box-sizing: border-box;
   }
 }

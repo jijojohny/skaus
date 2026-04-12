@@ -12,8 +12,8 @@ export function getPublicProfileUrl(username: string): string {
   return `${base}/${encodeURIComponent(username)}`;
 }
 
-export function getPaymentRequestUrl(username: string | undefined, requestId: string): string {
+export function getPaymentRequestUrl(username: string | undefined, slug: string): string {
   const u = username || 'pay';
   const base = (process.env.NEXT_PUBLIC_PUBLIC_LINK_BASE || 'https://skaus.me').replace(/\/$/, '');
-  return `${base}/${encodeURIComponent(u)}/request/${requestId}`;
+  return `${base}/${encodeURIComponent(u)}/${encodeURIComponent(slug)}`;
 }

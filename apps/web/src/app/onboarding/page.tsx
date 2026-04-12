@@ -240,14 +240,14 @@ function OnboardingContent() {
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
+    <div className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 overflow-x-clip">
       <div className="absolute inset-0 grid-bg" />
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-skaus-primary/5 blur-[150px] rounded-full" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[min(37.5rem,calc(100vw-1.5rem))] h-[min(25rem,45vh)] bg-skaus-primary/5 blur-[150px] rounded-full" />
 
       {/* Back */}
       <Link
         href="/"
-        className="absolute top-6 left-6 z-10 flex items-center gap-2 text-sm text-skaus-muted hover:text-white transition-colors"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-10 flex items-center gap-2 text-sm text-skaus-muted hover:text-white transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -256,7 +256,7 @@ function OnboardingContent() {
       </Link>
 
       {/* Step Indicator */}
-      <div className="relative z-10 mb-8">
+      <div className="relative z-10 mb-6 sm:mb-8 px-1">
         <div className="flex items-center gap-3">
           {['username', 'pin', 'confirm'].map((s, i) => {
             const stepOrder = ['username', 'pin', 'confirm'];
@@ -293,7 +293,7 @@ function OnboardingContent() {
       </div>
 
       {/* Step Content */}
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-md min-w-0">
         {/* STEP 1: Username */}
         {step === 'username' && (
           <div className="space-y-6 animate-slide-up">
@@ -395,7 +395,7 @@ function OnboardingContent() {
                       value={digit}
                       onChange={(e) => handlePinInput(i, e.target.value, pin, setPin, pinRefs)}
                       onKeyDown={(e) => handlePinKeyDown(i, e, pin, setPin, pinRefs)}
-                      className={`w-12 h-14 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none ${
+                      className={`w-9 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none ${
                         digit
                           ? 'border-skaus-primary text-white'
                           : 'border-skaus-border text-skaus-muted'
@@ -460,7 +460,7 @@ function OnboardingContent() {
                       value={digit}
                       onChange={(e) => handlePinInput(i, e.target.value, confirmPin, setConfirmPin, confirmPinRefs)}
                       onKeyDown={(e) => handlePinKeyDown(i, e, confirmPin, setConfirmPin, confirmPinRefs)}
-                      className={`w-12 h-14 text-center text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none ${
+                      className={`w-9 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-lg border transition-all duration-200 bg-skaus-darker focus:outline-none ${
                         digit
                           ? 'border-skaus-primary text-white'
                           : 'border-skaus-border text-skaus-muted'
