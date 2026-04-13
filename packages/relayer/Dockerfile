@@ -36,6 +36,7 @@ COPY --from=builder /app/generated ./generated
 COPY --from=builder /app/dist ./dist
 
 RUN pnpm install --prod --no-frozen-lockfile
+RUN pnpm exec prisma generate
 
 EXPOSE 3002
 
