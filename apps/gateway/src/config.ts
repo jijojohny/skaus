@@ -19,6 +19,23 @@ export const config = {
     maxPendingTxs: parseInt(process.env.MAX_PENDING_TXS || '50', 10),
   },
 
+  /**
+   * Light Protocol / ZK compression endpoints.
+   * On devnet, Helius runs the Photon indexer so the compression endpoint
+   * is often the same as the Solana RPC URL.
+   */
+  compression: {
+    /** Photon compression API endpoint (Photon indexer). */
+    rpcUrl: process.env.LIGHT_RPC_URL || process.env.SOLANA_RPC_URL || 'http://localhost:8899',
+    /** ZK prover endpoint — required for generating validity proofs. */
+    proverUrl: process.env.LIGHT_PROVER_URL || 'https://prover.lightprotocol.com',
+    /**
+     * Whether ZK compression is enabled. Set to 'false' in local dev to skip
+     * Light Protocol calls and rely solely on Postgres.
+     */
+    enabled: process.env.ZK_COMPRESSION_ENABLED !== 'false',
+  },
+
   /** Used to build absolute pay links returned from POST /requests */
   webAppPublicUrl: (process.env.WEB_APP_PUBLIC_URL || 'http://localhost:4000').replace(/\/$/, ''),
 } as const;

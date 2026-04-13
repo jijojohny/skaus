@@ -18,6 +18,8 @@
     "@fastify/cors": "^9.0.0",
     "@fastify/rate-limit": "^9.1.0",
     "@prisma/client": "^5.14.0",
+    "@lightprotocol/stateless.js": "^0.22.0",
+    "@skaus/sdk": "workspace:*",
     "@skaus/types": "workspace:*",
     "@solana/spl-token": "^0.4.6",
     "@solana/web3.js": "^1.95.0",

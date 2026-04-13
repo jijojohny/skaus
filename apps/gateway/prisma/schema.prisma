@@ -14,18 +14,24 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Profile {
-  username      String   @id
-  nameHash      String?  @unique
-  displayName   String   @default("")
-  bio           String   @default("")
-  avatarUri     String   @default("")
-  links         Json     @default("[]")
-  paymentConfig Json     @default("{\"acceptedTokens\":[\"USDC\"],\"suggestedAmounts\":[],\"customAmountEnabled\":true,\"thankYouMessage\":\"\"}")
-  tiers         Json     @default("[]")
-  gatedContent  Json     @default("[]")
-  version       Int      @default(1)
-  updatedAt     BigInt   @default(0)
-  createdAt     DateTime @default(now())
+  username        String   @id
+  nameHash        String?  @unique
+  /// Hex-encoded 32-byte SHA-256 hash of the Light Protocol compressed account.
+  /// Null until the first successful ZK compression write.
+  /// Stored in NameRecord.profile_cid on-chain via update_profile instruction.
+  compressedHash  String?  @unique
+  /// True when compressedHash has been confirmed on-chain in the name-registry.
+  compressedOnChain Boolean @default(false)
+  displayName     String   @default("")
+  bio             String   @default("")
+  avatarUri       String   @default("")
+  links           Json     @default("[]")
+  paymentConfig   Json     @default("{\"acceptedTokens\":[\"USDC\"],\"suggestedAmounts\":[],\"customAmountEnabled\":true,\"thankYouMessage\":\"\"}")
+  tiers           Json     @default("[]")
+  gatedContent    Json     @default("[]")
+  version         Int      @default(1)
+  updatedAt       BigInt   @default(0)
+  createdAt       DateTime @default(now())
 
   @@map("profiles")
 }
