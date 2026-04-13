@@ -21,7 +21,8 @@
   "pnpm": {
     "overrides": {
       "ts-node": "^10.9.2"
-    }
+    },
+    "dangerouslyAllowAllBuilds": true
   },
   "devDependencies": {
     "@types/chai": "^4.3.20",

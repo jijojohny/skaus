@@ -25,6 +25,7 @@ const relayRequestSchema = {
 
 export async function relayRoutes(app: FastifyInstance) {
   const relayService = new RelayService(config);
+  await relayService.init(); // restore persisted totalRelayed from DB
 
   app.post<{
     Body: {

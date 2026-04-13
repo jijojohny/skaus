@@ -26,6 +26,8 @@ const logger = pino({
 
 async function buildServer() {
   const fastify = Fastify({
+    // Per-request logs easily exceed Railway's log rate limit under scanners / aggressive probes.
+    disableRequestLogging: config.nodeEnv === 'production',
     logger: {
       level: config.logLevel,
       transport:

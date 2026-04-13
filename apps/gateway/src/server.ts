@@ -55,7 +55,6 @@ async function main() {
   // Initialise indexers (restores polling cursors from DB)
   const { DepositIndexer, buildHeliusGeyserUrl } = await import('./services/indexer');
   const { NameIndexer } = await import('./services/name-indexer');
-  const { RelayService } = await import('./services/relay');
 
   const geyserWsUrl = buildHeliusGeyserUrl(
     config.helius.apiKey,
@@ -81,20 +80,6 @@ async function main() {
   });
   await nameIndexer.start();
   app.log.info('Name indexer started');
-
-  const relayService = new RelayService({
-    solana: {
-      rpcUrl: config.solana.rpcUrl,
-      cluster: config.solana.cluster,
-      stealthPoolProgramId: config.solana.stealthPoolProgramId,
-    },
-    relayer: {
-      privateKey: config.relayer.privateKey,
-      feeBps: config.relayer.feeBps,
-      maxPendingTxs: config.relayer.maxPendingTxs,
-    },
-  });
-  await relayService.init();
 
   // Graceful shutdown
   const shutdown = async () => {

@@ -1,12 +1,16 @@
 import 'dotenv/config';
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+
 export const config = {
   port: parseInt(
     process.env.RELAYER_PORT || process.env.PORT || '3002',
     10,
   ),
-  nodeEnv: process.env.NODE_ENV || 'development',
-  logLevel: process.env.LOG_LEVEL || 'info',
+  nodeEnv,
+  logLevel:
+    process.env.LOG_LEVEL ||
+    (nodeEnv === 'production' ? 'warn' : 'info'),
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:4000').split(','),
 
   solana: {
