@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-COPY package.json tsconfig.json .npmrc ./
+COPY package.json tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
 
@@ -30,7 +30,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/.npmrc ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/generated ./generated
 COPY --from=builder /app/dist ./dist
