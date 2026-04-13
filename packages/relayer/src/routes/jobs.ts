@@ -100,7 +100,7 @@ export async function jobRoutes(
         },
       });
 
-      req.log.info({ jobId: job.id, nullifierHash }, 'Withdrawal job enqueued');
+      req.log.debug({ jobId: job.id, nullifierHash }, 'Withdrawal job enqueued');
 
       return reply.status(201).send({
         id: job.id,

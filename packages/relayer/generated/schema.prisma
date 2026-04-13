@@ -1,6 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated"
+  provider      = "prisma-client-js"
+  output        = "../generated"
+  // Debian slim (Docker) + local dev; avoids musl/Alpine engine + bigint-buffer native issues
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

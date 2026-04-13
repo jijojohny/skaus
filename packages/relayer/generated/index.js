@@ -149,6 +149,10 @@ const config = {
         "fromEnvVar": null,
         "value": "debian-openssl-3.0.x",
         "native": true
+      },
+      {
+        "fromEnvVar": null,
+        "value": "debian-openssl-3.0.x"
       }
     ],
     "previewFeatures": [],
@@ -174,8 +178,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel WithdrawalJob {\n  id            String   @id @default(cuid())\n  proofBase64   String\n  merkleRoot    String\n  nullifierHash String   @unique\n  recipient     String\n  amount        String\n  fee           String\n  tokenMint     String\n  status        String   @default(\"pending\") // pending | processing | confirmed | failed\n  txSignature   String?\n  attempts      Int      @default(0)\n  lastError     String?\n  createdAt     DateTime @default(now())\n  updatedAt     DateTime @updatedAt\n\n  @@map(\"withdrawal_jobs\")\n}\n",
-  "inlineSchemaHash": "4a99aaa6cbbb9160b53868e7044a0f5c15a4044b88000cffbd763fcb54418e5d",
+  "inlineSchema": "generator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../generated\"\n  // Debian slim (Docker) + local dev; avoids musl/Alpine engine + bigint-buffer native issues\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel WithdrawalJob {\n  id            String   @id @default(cuid())\n  proofBase64   String\n  merkleRoot    String\n  nullifierHash String   @unique\n  recipient     String\n  amount        String\n  fee           String\n  tokenMint     String\n  status        String   @default(\"pending\") // pending | processing | confirmed | failed\n  txSignature   String?\n  attempts      Int      @default(0)\n  lastError     String?\n  createdAt     DateTime @default(now())\n  updatedAt     DateTime @updatedAt\n\n  @@map(\"withdrawal_jobs\")\n}\n",
+  "inlineSchemaHash": "d5ae69926c8980df9ac49f941735ae29d8ddf97cda7a0c5a226029c5b3d4dfed",
   "copyEngine": true
 }
 
