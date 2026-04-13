@@ -1,29 +1,31 @@
+# Monorepo root as build context (e.g. `docker build -f infra/docker/Dockerfile.relayer .`).
+# Use this from CI or when Railway "Root Directory" is empty (full repo clone).
 FROM node:18-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/packages/relayer
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
-COPY packages/relayer/ packages/relayer/
+COPY packages/relayer/package.json packages/relayer/tsconfig.json ./
+COPY packages/relayer/prisma ./prisma
+COPY packages/relayer/src ./src
 
-RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @skaus/relayer db:generate
-RUN pnpm --filter @skaus/relayer build
+RUN pnpm install --no-frozen-lockfile
+RUN pnpm exec prisma generate
+RUN pnpm exec tsc
 
 FROM node:18-alpine AS runner
 
-WORKDIR /app
+WORKDIR /app/packages/relayer
 RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-COPY --from=builder /app/packages/relayer/dist        packages/relayer/dist
-COPY --from=builder /app/packages/relayer/package.json packages/relayer/
-COPY --from=builder /app/packages/relayer/prisma      packages/relayer/prisma
-COPY --from=builder /app/packages/relayer/generated   packages/relayer/generated
+COPY --from=builder /app/packages/relayer/package.json ./
+COPY --from=builder /app/packages/relayer/prisma ./prisma
+COPY --from=builder /app/packages/relayer/generated ./generated
+COPY --from=builder /app/packages/relayer/dist ./dist
 
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --prod --no-frozen-lockfile
 
 EXPOSE 3002
 
-CMD ["sh", "-c", "cd packages/relayer && npx -y prisma migrate deploy && cd /app && node packages/relayer/dist/server.js"]
+CMD ["sh", "-c", "cd /app/packages/relayer && npx -y prisma migrate deploy && node dist/server.js"]
