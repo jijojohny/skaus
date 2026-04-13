@@ -68,12 +68,6 @@ services:
       RELAYER_POLL_INTERVAL_MS: ${RELAYER_POLL_INTERVAL_MS:-3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
-  dashboard:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-dashboard:latest
-    restart: unless-stopped
-    depends_on:
-      - gateway
-
   web:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-web:latest
     restart: unless-stopped

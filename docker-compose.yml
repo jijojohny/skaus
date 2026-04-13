@@ -68,18 +68,6 @@ services:
       RELAYER_POLL_INTERVAL_MS: ${RELAYER_POLL_INTERVAL_MS:-3000}
     # Internal service — not exposed through nginx; accessed by gateway or directly
 
-  dashboard:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.dashboard
-      args:
-        NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-}
-    restart: unless-stopped
-    depends_on:
-      - gateway
-    ports:
-      - '3003:3003'
-
   web:
     build:
       context: .
