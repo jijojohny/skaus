@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
     "start": "npx -y prisma migrate deploy && node dist/server.js",
+    "postinstall": "prisma generate",
     "lint": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push"
