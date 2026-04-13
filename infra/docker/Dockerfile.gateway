@@ -10,6 +10,7 @@ COPY apps/gateway/ apps/gateway/
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @skaus/types build
 RUN pnpm --filter @skaus/crypto build
+RUN pnpm --filter @skaus/sdk build
 # Generate Prisma client before TypeScript compilation
 RUN pnpm --filter @skaus/gateway db:generate
 RUN pnpm --filter @skaus/gateway build

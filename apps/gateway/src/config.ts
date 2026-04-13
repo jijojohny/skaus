@@ -36,6 +36,20 @@ export const config = {
     enabled: process.env.ZK_COMPRESSION_ENABLED !== 'false',
   },
 
+  /**
+   * Helius Geyser WebSocket for real-time deposit monitoring.
+   * When apiKey is set the indexer opens a logsSubscribe WebSocket alongside
+   * the polling fallback. Polling always runs as a catch-up safety net.
+   */
+  helius: {
+    apiKey: process.env.HELIUS_API_KEY || '',
+    /**
+     * Explicit WebSocket URL override. If empty, derived automatically from
+     * apiKey + cluster (mainnet-beta → mainnet, devnet → devnet).
+     */
+    wsUrl: process.env.HELIUS_WS_URL || '',
+  },
+
   /** Used to build absolute pay links returned from POST /requests */
   webAppPublicUrl: (process.env.WEB_APP_PUBLIC_URL || 'http://localhost:4000').replace(/\/$/, ''),
 } as const;

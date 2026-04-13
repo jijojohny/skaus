@@ -1,7 +1,8 @@
 generator client {
   provider      = "prisma-client-js"
   output        = "../generated"
-  binaryTargets = ["linux-musl-openssl-3.0.x"]
+  // `native` resolves the build image (e.g. linux-musl in Alpine); explicit target for OpenSSL 3 musl runtimes.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

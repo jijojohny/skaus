@@ -1,0 +1,29 @@
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY packages/relayer/ packages/relayer/
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @skaus/relayer db:generate
+RUN pnpm --filter @skaus/relayer build
+
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+RUN apk add --no-cache openssl
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
+COPY --from=builder /app/packages/relayer/dist        packages/relayer/dist
+COPY --from=builder /app/packages/relayer/package.json packages/relayer/
+COPY --from=builder /app/packages/relayer/prisma      packages/relayer/prisma
+COPY --from=builder /app/packages/relayer/generated   packages/relayer/generated
+
+RUN pnpm install --frozen-lockfile --prod
+
+EXPOSE 3002
+
+CMD ["sh", "-c", "cd packages/relayer && npx -y prisma migrate deploy && cd /app && node packages/relayer/dist/server.js"]

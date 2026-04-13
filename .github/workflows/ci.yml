@@ -34,6 +34,7 @@ jobs:
         run: |
           pnpm --filter @skaus/types build
           pnpm --filter @skaus/crypto build
+          pnpm --filter @skaus/sdk build
 
       - name: Generate Prisma client
         run: pnpm --filter @skaus/gateway db:generate

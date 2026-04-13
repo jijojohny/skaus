@@ -53,16 +53,27 @@ async function main() {
   app.log.info('PostgreSQL connected');
 
   // Initialise indexers (restores polling cursors from DB)
-  const { DepositIndexer } = await import('./services/indexer');
+  const { DepositIndexer, buildHeliusGeyserUrl } = await import('./services/indexer');
   const { NameIndexer } = await import('./services/name-indexer');
   const { RelayService } = await import('./services/relay');
+
+  const geyserWsUrl = buildHeliusGeyserUrl(
+    config.helius.apiKey,
+    config.solana.cluster,
+    config.helius.wsUrl,
+  );
 
   const depositIndexer = new DepositIndexer({
     rpcUrl: config.solana.rpcUrl,
     programId: config.solana.stealthPoolProgramId,
+    geyserWsUrl: geyserWsUrl || undefined,
   });
   await depositIndexer.start();
-  app.log.info('Deposit indexer started');
+  app.log.info(
+    geyserWsUrl
+      ? 'Deposit indexer started (Helius Geyser + polling)'
+      : 'Deposit indexer started (polling only — set HELIUS_API_KEY for real-time)',
+  );
 
   const nameIndexer = new NameIndexer({
     rpcUrl: config.solana.rpcUrl,

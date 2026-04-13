@@ -6,6 +6,7 @@ import {
   TransactionInstruction,
   SystemProgram,
   sendAndConfirmTransaction,
+  ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
@@ -35,6 +36,15 @@ interface PublicInputs {
   amount: string;
   fee: string;
 }
+
+/** Compute units to request for the withdraw instruction. */
+const WITHDRAW_CU_LIMIT = 400_000;
+
+/** Minimum priority fee (microlamports/CU) used when chain data is unavailable. */
+const MIN_PRIORITY_FEE_ULAMPORTS = 1_000;
+
+/** Maximum retry attempts for a single withdrawal submission. */
+const MAX_SUBMIT_ATTEMPTS = 3;
 
 export class RelayService {
   private connection: Connection;
@@ -110,47 +120,72 @@ export class RelayService {
         merkleRootBytes,
       );
 
-      const instruction = new TransactionInstruction({
+      // Estimate priority fee from recent on-chain data (75th-percentile).
+      const priorityFee = await this.estimatePriorityFee();
+
+      const withdrawIx = new TransactionInstruction({
         programId: this.programId,
         keys: accountMetas,
         data: instructionData,
       });
 
-      const transaction = new Transaction();
+      // Build the base transaction (may add ATA creation instruction).
+      const buildTx = async (): Promise<Transaction> => {
+        const tx = new Transaction();
 
-      const recipientAta = await getAssociatedTokenAddress(tokenMint, recipient, true);
-      const recipientAtaInfo = await this.connection.getAccountInfo(recipientAta);
-      if (!recipientAtaInfo) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            this.relayerKeypair.publicKey,
-            recipientAta,
-            recipient,
-            tokenMint,
-          )
+        // ComputeBudget: request explicit CU limit and pay priority fee.
+        tx.add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: WITHDRAW_CU_LIMIT }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }),
         );
+
+        const recipientAta = await getAssociatedTokenAddress(tokenMint, recipient, true);
+        const recipientAtaInfo = await this.connection.getAccountInfo(recipientAta);
+        if (!recipientAtaInfo) {
+          tx.add(
+            createAssociatedTokenAccountInstruction(
+              this.relayerKeypair!.publicKey,
+              recipientAta,
+              recipient,
+              tokenMint,
+            )
+          );
+        }
+
+        tx.add(withdrawIx);
+        return tx;
+      };
+
+      // Submit with exponential-backoff retry (blockhash refreshed each attempt).
+      let lastError: unknown;
+      for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt++) {
+        try {
+          const tx = await buildTx();
+          const signature = await sendAndConfirmTransaction(
+            this.connection,
+            tx,
+            [this.relayerKeypair],
+            { commitment: 'confirmed' }
+          );
+
+          this.totalRelayed += 1n;
+          await prisma.relayMetrics.upsert({
+            where: { id: 1 },
+            update: { totalRelayed: this.totalRelayed },
+            create: { id: 1, totalRelayed: this.totalRelayed },
+          });
+
+          return { txSignature: signature, status: 'confirmed', fee: publicInputs.fee };
+        } catch (err) {
+          lastError = err;
+          if (attempt < MAX_SUBMIT_ATTEMPTS - 1) {
+            // Exponential back-off: 500 ms, 1 000 ms.
+            await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+          }
+        }
       }
 
-      transaction.add(instruction);
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.relayerKeypair],
-        { commitment: 'confirmed' }
-      );
-
-      this.totalRelayed += 1n;
-      await prisma.relayMetrics.upsert({
-        where: { id: 1 },
-        update: { totalRelayed: this.totalRelayed },
-        create: { id: 1, totalRelayed: this.totalRelayed },
-      });
-
-      return {
-        txSignature: signature,
-        status: 'confirmed',
-        fee: publicInputs.fee,
-      };
+      throw lastError;
     } finally {
       this.pendingTxCount--;
     }
@@ -165,6 +200,37 @@ export class RelayService {
       relayerPubkey: this.relayerKeypair?.publicKey.toBase58() || null,
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // Priority fee estimation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Query recent prioritisation fees for the stealth pool program and return
+   * the 75th-percentile value (microlamports per CU).  Falls back to
+   * MIN_PRIORITY_FEE_ULAMPORTS if the RPC call fails or returns no data.
+   */
+  private async estimatePriorityFee(): Promise<number> {
+    try {
+      const fees = await this.connection.getRecentPrioritizationFees({
+        lockedWritableAccounts: [this.programId],
+      });
+      if (fees.length === 0) return MIN_PRIORITY_FEE_ULAMPORTS;
+
+      const sorted = fees
+        .map((f) => f.prioritizationFee)
+        .sort((a, b) => a - b);
+
+      const p75Index = Math.floor(sorted.length * 0.75);
+      return Math.max(sorted[p75Index] ?? MIN_PRIORITY_FEE_ULAMPORTS, MIN_PRIORITY_FEE_ULAMPORTS);
+    } catch {
+      return MIN_PRIORITY_FEE_ULAMPORTS;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account derivation
+  // ---------------------------------------------------------------------------
 
   /**
    * Derive the full set of account metas for the Withdraw instruction.
@@ -236,6 +302,10 @@ export class RelayService {
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ];
   }
+
+  // ---------------------------------------------------------------------------
+  // Instruction serialization
+  // ---------------------------------------------------------------------------
 
   /**
    * Serialize withdrawal instruction data matching Anchor's layout:

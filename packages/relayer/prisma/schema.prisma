@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model WithdrawalJob {
+  id            String   @id @default(cuid())
+  proofBase64   String
+  merkleRoot    String
+  nullifierHash String   @unique
+  recipient     String
+  amount        String
+  fee           String
+  tokenMint     String
+  status        String   @default("pending") // pending | processing | confirmed | failed
+  txSignature   String?
+  attempts      Int      @default(0)
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("withdrawal_jobs")
+}

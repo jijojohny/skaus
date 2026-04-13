@@ -42,6 +42,37 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       WEB_APP_PUBLIC_URL: ${WEB_APP_PUBLIC_URL}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      ZK_COMPRESSION_ENABLED: ${ZK_COMPRESSION_ENABLED:-true}
+      LIGHT_RPC_URL: ${LIGHT_RPC_URL:-}
+      LIGHT_PROVER_URL: ${LIGHT_PROVER_URL:-https://prover.lightprotocol.com}
+      HELIUS_API_KEY: ${HELIUS_API_KEY}
+      HELIUS_WS_URL: ${HELIUS_WS_URL:-}
+
+  relayer:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-relayer:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-skaus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-skaus}
+      NODE_ENV: production
+      RELAYER_PORT: 3002
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      SOLANA_CLUSTER: ${SOLANA_CLUSTER:-mainnet-beta}
+      STEALTH_POOL_PROGRAM_ID: ${STEALTH_POOL_PROGRAM_ID}
+      RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY}
+      RELAYER_FEE_BPS: ${RELAYER_FEE_BPS:-10}
+      RELAYER_MAX_CONCURRENT: ${RELAYER_MAX_CONCURRENT:-5}
+      RELAYER_MAX_ATTEMPTS: ${RELAYER_MAX_ATTEMPTS:-3}
+      RELAYER_POLL_INTERVAL_MS: ${RELAYER_POLL_INTERVAL_MS:-3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  dashboard:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-dashboard:latest
+    restart: unless-stopped
+    depends_on:
+      - gateway
 
   web:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/skaus-web:latest

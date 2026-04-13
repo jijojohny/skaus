@@ -37,7 +37,48 @@ services:
       MAX_PENDING_TXS: ${MAX_PENDING_TXS:-50}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80}
       WEB_APP_PUBLIC_URL: ${WEB_APP_PUBLIC_URL:-http://localhost}
+      # ZK compression (optional — set to 'false' for local dev without a Photon node)
+      ZK_COMPRESSION_ENABLED: ${ZK_COMPRESSION_ENABLED:-false}
+      LIGHT_RPC_URL: ${LIGHT_RPC_URL:-}
+      LIGHT_PROVER_URL: ${LIGHT_PROVER_URL:-https://prover.lightprotocol.com}
+      # Helius Geyser real-time indexing (optional — falls back to polling)
+      HELIUS_API_KEY: ${HELIUS_API_KEY:-}
+      HELIUS_WS_URL: ${HELIUS_WS_URL:-}
     # Not published externally — nginx proxies to gateway on the internal network
+
+  relayer:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.relayer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://skaus:skaus_dev@postgres:5432/skaus
+      NODE_ENV: production
+      RELAYER_PORT: 3002
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      SOLANA_CLUSTER: ${SOLANA_CLUSTER:-devnet}
+      STEALTH_POOL_PROGRAM_ID: ${STEALTH_POOL_PROGRAM_ID:-EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq}
+      RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY}
+      RELAYER_FEE_BPS: ${RELAYER_FEE_BPS:-10}
+      RELAYER_MAX_CONCURRENT: ${RELAYER_MAX_CONCURRENT:-5}
+      RELAYER_MAX_ATTEMPTS: ${RELAYER_MAX_ATTEMPTS:-3}
+      RELAYER_POLL_INTERVAL_MS: ${RELAYER_POLL_INTERVAL_MS:-3000}
+    # Internal service — not exposed through nginx; accessed by gateway or directly
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    ports:
+      - '3003:3003'
 
   web:
     build:
