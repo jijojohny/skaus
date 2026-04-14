@@ -97,7 +97,10 @@ export async function signAndSendTransaction(txBase64: string): Promise<string> 
 
   // Ensure wallet is connected first
   if (!provider.publicKey) {
-    await provider.connect({ onlyIfTrusted: false });
+    const res = await provider.connect({ onlyIfTrusted: false });
+    if (!res?.publicKey) {
+      throw new Error('Wallet connected but no public key returned');
+    }
   }
 
   const txBytes = base64ToUint8Array(txBase64);

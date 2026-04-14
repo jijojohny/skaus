@@ -49,7 +49,7 @@ export async function payLinkRoutes(app: FastifyInstance) {
         network: config.solana.cluster,
         amount: amount ? BigInt(amount).toString() : null,
         token: token || 'USDC',
-        payUrl: `https://skaus.pay/${username}`,
+        payUrl: `${config.webAppPublicUrl}/${username}`,
         profileCid: resolved.profileCid,
         depositIndex: resolved.depositIndex,
       });
@@ -99,5 +99,5 @@ function buildPayUrl(username: string, amount?: string, token?: string): string 
   if (amount) params.set('amount', amount);
   if (token) params.set('token', token);
   const qs = params.toString();
-  return `https://skaus.pay/${username}${qs ? `?${qs}` : ''}`;
+  return `${config.webAppPublicUrl}/${username}${qs ? `?${qs}` : ''}`;
 }

@@ -10,7 +10,7 @@ import { executeDeposit } from '@/lib/deposit';
 import { TransactionStatus } from '@/components/TransactionStatus';
 import { DepositForm } from '@/components/DepositForm';
 import { decodePubkey, isMockPubkey } from '@/lib/keys';
-import { config } from '@/lib/config';
+import { config, getPublicLinkHost } from '@/lib/config';
 import { DEPOSIT_TIERS_USDC, DEPOSIT_TIERS_SOL, splitIntoTiers } from '@skaus/types';
 import type { StealthMetaAddress } from '@skaus/crypto';
 import Link from 'next/link';
@@ -81,7 +81,7 @@ export default function PaymentRequestSlugPage({ params }: SlugPageProps) {
       } else {
         throw new Error(
           `@${username} hasn't set up their stealth keys yet. ` +
-          'Ask them to complete onboarding at skaus.me first.',
+          `Ask them to complete onboarding at ${getPublicLinkHost()} first.`,
         );
       }
 

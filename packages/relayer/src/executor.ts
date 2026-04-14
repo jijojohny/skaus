@@ -265,7 +265,7 @@ export class WithdrawExecutor {
 
       const fees = samples
         .map((s) => s.prioritizationFee)
-        .filter((f) => f > 0)
+        .filter((f): f is number => typeof f === 'number' && f > 0)
         .sort((a, b) => a - b);
 
       if (fees.length === 0) return FALLBACK_PRIORITY_FEE;

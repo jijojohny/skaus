@@ -15,6 +15,7 @@ import {
 import { useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, Transaction } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { getPublicLinkHost } from '@/lib/config';
 
 type Step = 'username' | 'pin' | 'confirm' | 'registering' | 'done';
 
@@ -317,7 +318,7 @@ function OnboardingContent() {
                     </div>
                   </div>
                   <div className="pt-4">
-                    <span className="text-skaus-muted font-mono text-lg">skaus.me/</span>
+                    <span className="text-skaus-muted font-mono text-lg">{getPublicLinkHost()}/</span>
                     <span className="text-white font-mono text-lg font-bold">
                       {username || <span className="text-skaus-muted/40">your-name</span>}
                     </span>
@@ -536,7 +537,7 @@ function OnboardingContent() {
             <div className="glass-card p-6 space-y-3">
               <p className="section-label">YOUR LINK</p>
               <p className="text-xl font-mono font-bold text-white">
-                skaus.me/<span className="text-skaus-primary">{username}</span>
+                {getPublicLinkHost()}/<span className="text-skaus-primary">{username}</span>
               </p>
               {txSignature && (
                 <a

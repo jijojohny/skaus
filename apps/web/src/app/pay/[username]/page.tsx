@@ -12,6 +12,7 @@ import { TransactionStatus } from '@/components/TransactionStatus';
 import { resolvePayLink, type PayLinkData } from '@/lib/gateway';
 import { executeDeposit } from '@/lib/deposit';
 import Link from 'next/link';
+import { getPublicLinkHost } from '@/lib/config';
 
 interface PayPageProps {
   params: { username: string };
@@ -85,7 +86,7 @@ export default function PayPage({ params }: PayPageProps) {
       if (!meta || isMockPubkey(meta.scanPubkey) || isMockPubkey(meta.spendPubkey)) {
         throw new Error(
           `@${username} hasn't set up their stealth keys yet. ` +
-          'Ask them to complete onboarding at skaus.me first.'
+          `Ask them to complete onboarding at ${getPublicLinkHost()} first.`
         );
       }
 

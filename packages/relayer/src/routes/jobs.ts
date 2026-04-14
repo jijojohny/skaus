@@ -80,7 +80,9 @@ export async function jobRoutes(
         where: { nullifierHash },
       });
       if (existing) {
-        return reply.status(200).send({
+        // 409 — nullifier already submitted; client can poll GET /jobs/:id
+        return reply.status(409).send({
+          error: 'Duplicate nullifier — job already exists',
           id: existing.id,
           status: existing.status,
           txSignature: existing.txSignature ?? undefined,

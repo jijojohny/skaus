@@ -6,6 +6,16 @@ export const config = {
   cluster: (process.env.NEXT_PUBLIC_CLUSTER || 'devnet') as 'devnet' | 'mainnet-beta',
 } as const;
 
+/** Display hostname for the public link base, e.g. "skaus.me" or "localhost:3000". */
+export function getPublicLinkHost(): string {
+  const base = process.env.NEXT_PUBLIC_PUBLIC_LINK_BASE || 'https://skaus.me';
+  try {
+    return new URL(base).host;
+  } catch {
+    return 'skaus.me';
+  }
+}
+
 /** Full URL payers can open (QR / copy). Override for local dev, e.g. http://localhost:3000 */
 export function getPublicProfileUrl(username: string): string {
   const base = (process.env.NEXT_PUBLIC_PUBLIC_LINK_BASE || 'https://skaus.me').replace(/\/$/, '');

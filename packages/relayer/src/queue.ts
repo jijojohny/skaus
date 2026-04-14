@@ -107,6 +107,16 @@ export class QueueProcessor {
           recipient: job.recipient,
           amount: job.amount,
           tokenMint: job.tokenMint,
+        }).catch((err) => {
+          // Catastrophic failure (e.g. DB unavailable at the first update).
+          // Reset job to 'pending' so the next poll can retry it.
+          logger.error({ id: job.id, err }, 'Catastrophic job failure — resetting to pending');
+          prisma.withdrawalJob.update({
+            where: { id: job.id },
+            data: { status: 'pending' },
+          }).catch((dbErr) => {
+            logger.error({ id: job.id, dbErr }, 'Failed to reset stuck job — manual intervention required');
+          });
         }).finally(() => {
           this.activeJobs--;
         });

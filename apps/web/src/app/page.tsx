@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import Link from 'next/link';
+import { getPublicLinkHost } from '@/lib/config';
 
 export default function Home() {
   const router = useRouter();
@@ -83,7 +84,7 @@ export default function Home() {
               <div className="absolute inset-0 bg-skaus-primary/10 blur-xl rounded-2xl" />
               <div className="relative glass-card p-3 sm:p-2 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-2">
                 <div className="flex flex-1 min-w-0 items-center gap-2 sm:pl-2">
-                  <span className="pl-1 sm:pl-2 text-skaus-muted font-mono text-xs sm:text-sm shrink-0">skaus.me/</span>
+                  <span className="pl-1 sm:pl-2 text-skaus-muted font-mono text-xs sm:text-sm shrink-0">{getPublicLinkHost()}/</span>
                   <input
                     type="text"
                     value={username}
