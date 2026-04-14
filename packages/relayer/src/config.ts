@@ -16,6 +16,8 @@ export const config = {
   solana: {
     rpcUrl: process.env.SOLANA_RPC_URL || 'http://localhost:8899',
     stealthPoolProgramId: process.env.STEALTH_POOL_PROGRAM_ID || 'EAeFbo2SKK7KGiUwj4WHAYQxVEWFgiU1ygao9rnB7cGq',
+    // Timeout for individual RPC HTTP fetches (ms)
+    rpcFetchTimeoutMs: parseInt(process.env.SOLANA_RPC_FETCH_TIMEOUT_MS || '10000', 10),
   },
 
   relayer: {
@@ -24,5 +26,7 @@ export const config = {
     maxConcurrent: parseInt(process.env.RELAYER_MAX_CONCURRENT || '5', 10),
     maxAttempts: parseInt(process.env.RELAYER_MAX_ATTEMPTS || '3', 10),
     pollIntervalMs: parseInt(process.env.RELAYER_POLL_INTERVAL_MS || '3000', 10),
+    // Timeout for individual DB queries inside the poll loop (ms)
+    dbQueryTimeoutMs: parseInt(process.env.RELAYER_DB_QUERY_TIMEOUT_MS || '8000', 10),
   },
 } as const;

@@ -95,9 +95,20 @@ async function buildServer() {
 async function main() {
   const { fastify, processor } = await buildServer();
 
-  // Ensure DB is reachable before starting
+  // Ensure DB is reachable before starting — fail fast with a hard timeout so
+  // Railway's health check doesn't kill us before we've had a chance to log
+  // a useful error.
+  const DB_CONNECT_TIMEOUT_MS = 15_000;
   try {
-    await prisma.$connect();
+    await Promise.race([
+      prisma.$connect(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Database connection timed out after ${DB_CONNECT_TIMEOUT_MS}ms`)),
+          DB_CONNECT_TIMEOUT_MS,
+        ),
+      ),
+    ]);
     logger.info('Database connected');
   } catch (err) {
     logger.error({ err }, 'Failed to connect to database');

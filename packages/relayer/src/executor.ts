@@ -7,6 +7,7 @@ import {
   SystemProgram,
   ComputeBudgetProgram,
   sendAndConfirmTransaction,
+  ConnectionConfig,
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
@@ -63,11 +64,29 @@ export class WithdrawExecutor {
     if (!config.relayer.privateKey) {
       throw new Error('RELAYER_PRIVATE_KEY is required');
     }
-    this.connection = new Connection(config.solana.rpcUrl, 'confirmed');
+
+    const fetchTimeoutMs = config.solana.rpcFetchTimeoutMs;
+
+    // Wrap the global fetch with a per-request AbortController timeout so that
+    // any hung RPC call fails fast rather than blocking the process indefinitely.
+    const fetchWithTimeout: typeof fetch = (input, init) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+      return fetch(input, { ...init, signal: controller.signal }).finally(() =>
+        clearTimeout(timer),
+      );
+    };
+
+    const connectionConfig: ConnectionConfig = {
+      commitment: 'confirmed',
+      fetch: fetchWithTimeout,
+    };
+
+    this.connection = new Connection(config.solana.rpcUrl, connectionConfig);
     this.programId = new PublicKey(config.solana.stealthPoolProgramId);
     this.relayerKeypair = Keypair.fromSecretKey(bs58.decode(config.relayer.privateKey));
     logger.info(
-      { pubkey: this.relayerKeypair.publicKey.toBase58() },
+      { pubkey: this.relayerKeypair.publicKey.toBase58(), rpcFetchTimeoutMs: fetchTimeoutMs },
       'WithdrawExecutor initialised',
     );
   }
@@ -170,15 +189,27 @@ export class WithdrawExecutor {
       'Sending withdraw transaction',
     );
 
-    const signature = await sendAndConfirmTransaction(
-      this.connection,
-      tx,
-      [this.relayerKeypair],
-      { commitment: 'confirmed' },
-    );
+    // Cap the total time we wait for confirmation so the job doesn't hang
+    // indefinitely if the RPC websocket subscription stalls.
+    const TX_CONFIRM_TIMEOUT_MS = 60_000;
+    const signature = await Promise.race([
+      sendAndConfirmTransaction(
+        this.connection,
+        tx,
+        [this.relayerKeypair],
+        { commitment: 'confirmed' },
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`sendAndConfirmTransaction timed out after ${TX_CONFIRM_TIMEOUT_MS}ms`)),
+          TX_CONFIRM_TIMEOUT_MS,
+        ),
+      ),
+    ]);
 
     logger.info({ signature }, 'Withdraw transaction confirmed');
     return signature;
+
   }
 
   /**

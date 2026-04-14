@@ -4,6 +4,6 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "healthcheckPath": "/status"
+    "healthcheckPath": "/health"
   }
 }
