@@ -6,6 +6,9 @@ import { usePrivy } from '@privy-io/react-auth';
 import Link from 'next/link';
 import { getPublicLinkHost } from '@/lib/config';
 
+const RED = '#FF0000';
+const CARD = '#1a1a1a';
+
 export default function Home() {
   const router = useRouter();
   const { authenticated } = usePrivy();
@@ -21,138 +24,265 @@ export default function Home() {
     }
   };
 
+  const openAppHref = authenticated ? '/dashboard' : '/login';
+  const applyHref = authenticated ? '/dashboard' : '/login';
+
   return (
-    <div className="relative min-h-screen min-h-[100dvh] overflow-x-clip">
-      {/* Grid background */}
-      <div className="absolute inset-0 grid-bg" />
-
-      {/* Red glow effects — capped to viewport width to avoid horizontal scroll */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[min(50rem,100vw)] h-[min(37.5rem,70vh)] max-h-[600px] bg-skaus-primary/5 blur-[150px] rounded-full" />
-      <div className="absolute bottom-0 right-0 w-[min(25rem,85vw)] h-[min(25rem,50vh)] bg-skaus-primary/3 blur-[120px] rounded-full" />
-
-      {/* Navigation */}
-      <nav className="relative z-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 sm:px-6 lg:px-12 py-4 sm:py-6">
-        <Link href="/" className="text-xl sm:text-2xl font-black tracking-tight shrink-0">
-          <span className="text-skaus-primary">S</span>KAUS
+    <div className="flex min-h-screen min-h-[100dvh] flex-col bg-black text-white antialiased overflow-x-clip">
+      <header className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-8 lg:px-12">
+        <Link
+          href="/"
+          className="text-xl font-black italic tracking-tight text-white sm:text-2xl"
+          style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+        >
+          SKAUS
         </Link>
-        <div className="flex items-center gap-3 sm:gap-6 shrink-0">
-          <Link
-            href="/dashboard"
-            className="text-xs sm:text-sm text-skaus-muted hover:text-white transition-colors whitespace-nowrap"
+
+        <nav className="order-3 flex w-full basis-full justify-center gap-8 text-[10px] font-semibold tracking-[0.2em] text-neutral-500 sm:order-none sm:w-auto sm:basis-auto lg:gap-12 lg:text-[11px]">
+          <a href="#network" className="transition-colors hover:text-white">
+            NETWORK
+          </a>
+          <a href="#protocol" className="transition-colors hover:text-white">
+            PROTOCOL
+          </a>
+          <a href="#security" className="transition-colors hover:text-white">
+            SECURITY
+          </a>
+        </nav>
+
+        <Link
+          href={applyHref}
+          className="inline-flex items-center gap-2 px-5 py-3 text-xs font-black tracking-widest text-black transition-opacity hover:opacity-90 sm:px-6 sm:text-sm"
+          style={{ backgroundColor: RED }}
+        >
+          APPLY NOW
+          <span className="text-base leading-none" aria-hidden>
+            ↗
+          </span>
+        </Link>
+      </header>
+
+      <div className="relative z-10 grid min-h-0 flex-1 lg:grid-cols-[1fr_min(100%,24rem)] xl:grid-cols-[1fr_26rem]">
+        {/* Hero */}
+        <section
+          id="network"
+          className="relative flex min-h-[22rem] flex-col justify-between border-neutral-900 px-4 pb-10 pt-6 sm:min-h-[26rem] sm:px-8 lg:border-r lg:px-12 lg:pb-16 lg:pt-8"
+        >
+          <p
+            className="self-end font-mono text-[10px] tracking-wide sm:text-xs"
+            style={{ color: RED }}
           >
-            Dashboard
-          </Link>
-          {authenticated ? (
-            <Link href="/dashboard" className="btn-primary text-xs py-2 px-3 sm:px-4 whitespace-nowrap">
-              OPEN APP
-            </Link>
-          ) : (
-            <Link href="/login" className="btn-primary text-xs py-2 px-3 sm:px-4 whitespace-nowrap">
-              GET STARTED
-            </Link>
-          )}
-        </div>
-      </nav>
+            SYSLOG: [OK] SKAUS_V4.32
+          </p>
 
-      {/* Hero */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-6 pt-12 pb-16 sm:pt-16 sm:pb-24 lg:pt-24">
-        <div className="max-w-4xl w-full text-center space-y-8 sm:space-y-10">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 border border-skaus-border rounded-full animate-fade-in">
-            <span className="w-2 h-2 rounded-full bg-skaus-primary animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-skaus-muted">
-              Live on Solana Devnet
-            </span>
-          </div>
-
-          {/* Headline */}
-          <div className="space-y-4 animate-slide-up">
-            <h1 className="text-display-xl font-black leading-none">
-              GET PAID
-              <br />
-              <span className="gradient-text">STAY PRIVATE</span>
+          <div className="mt-auto max-w-xl space-y-5">
+            <h1 className="text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl lg:text-7xl">
+              SKAUS
             </h1>
-            <p className="text-lg lg:text-xl text-skaus-muted max-w-xl mx-auto text-balance">
-              Receive payments without exposing your wallet.
-              Stealth addresses, ZK proofs, one link.
+            <div className="flex items-stretch gap-3">
+              <span className="w-1 shrink-0 self-stretch" style={{ backgroundColor: RED }} aria-hidden />
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-white sm:text-sm">
+                GET PAID / STAY PRIVATE
+              </p>
+            </div>
+            <p className="max-w-lg text-[10px] font-medium uppercase leading-relaxed tracking-[0.12em] text-white/90 sm:text-[11px] lg:text-xs">
+              THE INVISIBLE AUTHORITY FOR DIGITAL PAYMENTS. REDACT YOUR FINANCIAL FOOTPRINT WITHOUT
+              COMPROMISING VELOCITY.
             </p>
           </div>
+        </section>
 
-          {/* Username Claim */}
-          <div className="max-w-md mx-auto w-full space-y-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <div className="relative">
-              <div className="absolute inset-0 bg-skaus-primary/10 blur-xl rounded-2xl" />
-              <div className="relative glass-card p-3 sm:p-2 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-2">
-                <div className="flex flex-1 min-w-0 items-center gap-2 sm:pl-2">
-                  <span className="pl-1 sm:pl-2 text-skaus-muted font-mono text-xs sm:text-sm shrink-0">{getPublicLinkHost()}/</span>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    onKeyDown={(e) => e.key === 'Enter' && handleClaim()}
-                    placeholder="your-name"
-                    maxLength={20}
-                    className="flex-1 min-w-0 bg-transparent text-white font-mono text-sm py-2.5 sm:py-3 focus:outline-none placeholder:text-skaus-muted/40"
-                  />
-                </div>
-                <button
-                  onClick={handleClaim}
-                  disabled={!username.trim()}
-                  className="btn-primary w-full sm:w-auto shrink-0 py-2.5 px-5 text-xs rounded-xl disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  CLAIM
-                </button>
-              </div>
+        {/* Sidebar */}
+        <aside
+          id="protocol"
+          className="flex h-full min-h-0 flex-col gap-px border-neutral-900 bg-neutral-950 px-4 pb-8 sm:px-6 lg:px-0 lg:pb-0"
+        >
+          {/* Card 1 — protocol CTA */}
+          <div
+            className="flex flex-col gap-6 p-6 sm:p-8"
+            style={{ backgroundColor: RED }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <PadlockIcon className="h-8 w-8 text-black" aria-hidden />
+              <span className="font-mono text-[10px] font-semibold tracking-wide text-black sm:text-xs">
+                PRTCL ID: 8821
+              </span>
+            </div>
+            <div className="inline-flex max-w-full self-start bg-black px-4 py-2">
+              <span className="text-[10px] font-bold tracking-[0.2em] text-white sm:text-xs">
+                UPCOMING PROTOCOL UPGRADE
+              </span>
+            </div>
+            <Link
+              href={openAppHref}
+              className="group mt-auto flex items-baseline gap-2 text-3xl font-black tracking-tight text-black sm:text-4xl"
+            >
+              OPEN APP
+              <span className="text-2xl transition-transform group-hover:translate-x-0.5 sm:text-3xl" aria-hidden>
+                →
+              </span>
+            </Link>
+          </div>
+
+          {/* Card 2 — balance */}
+          <div className="flex flex-col gap-6 p-6 sm:p-8" style={{ backgroundColor: CARD }}>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 shrink-0" style={{ backgroundColor: RED }} aria-hidden />
+              <span className="text-[10px] font-semibold tracking-[0.2em] text-neutral-500 sm:text-xs">
+                PROTOCOL PROCESSED
+              </span>
+            </div>
+            <p className="font-mono text-4xl font-bold tracking-tight text-white sm:text-5xl">
+              348,925
+              <span className="ml-2 align-top text-sm font-bold sm:text-base" style={{ color: RED }}>
+                $
+              </span>
+            </p>
+            <div className="flex items-end justify-between gap-4">
+              <span className="font-mono text-[9px] tracking-wide text-neutral-600 sm:text-[10px]">
+                REAL-TIME SYNC: ACTIVE
+              </span>
+              <SparklineIcon className="h-6 w-12 shrink-0 text-neutral-600" aria-hidden />
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="red-line max-w-xs mx-auto opacity-40" />
-
-          {/* Feature Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            <FeatureBlock
-              label="STEALTH POOL"
-              title="ZK Withdrawals"
-              description="Shared liquidity pool. On-chain observers see pool activity, never your payment graph."
-            />
-            <FeatureBlock
-              label="IDENTITY"
-              title="Pay Links"
-              description="Register your name. Share one link. Receive private payments from any Solana wallet."
-            />
-            <FeatureBlock
-              label="COMPLIANCE"
-              title="Your Terms"
-              description="Viewing keys and disclosure packages. Privacy by default, transparency when you choose."
-            />
+          {/* Card 3 — claim */}
+          <div
+            id="security"
+            className="flex flex-1 flex-col gap-5 border-t border-neutral-800 p-6 sm:p-8"
+            style={{ backgroundColor: CARD }}
+          >
+            <div className="flex items-center justify-between border-b border-neutral-700 pb-2">
+              <span className="font-mono text-[9px] tracking-wide text-neutral-500 sm:text-[10px]">
+                ADDRESS_CLAIM_SERVICE.EXE
+              </span>
+              <span className="flex gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 bg-neutral-600" />
+                <span className="h-1.5 w-1.5 bg-neutral-600" />
+              </span>
+            </div>
+            <div className="flex flex-wrap items-baseline gap-0 border-b border-white/80 pb-1 font-mono text-sm sm:text-base">
+              <span className="shrink-0 font-semibold" style={{ color: RED }}>
+                {getPublicLinkHost()}/
+              </span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                onKeyDown={(e) => e.key === 'Enter' && handleClaim()}
+                placeholder="ID_STUB"
+                maxLength={20}
+                className="min-w-0 flex-1 bg-transparent uppercase tracking-wide text-neutral-500 placeholder:text-neutral-600 focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleClaim}
+              disabled={!username.trim()}
+              className="mt-auto w-full py-3.5 text-xs font-black tracking-[0.25em] text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"
+              style={{ backgroundColor: '#ffffff' }}
+            >
+              CLAIM IDENTITY
+            </button>
           </div>
+        </aside>
+      </div>
+
+      {/* Marquee */}
+      <div className="relative z-10 shrink-0 overflow-hidden py-2" style={{ backgroundColor: RED }}>
+        <div className="landing-marquee-track flex w-max whitespace-nowrap font-mono text-[10px] font-bold tracking-widest text-black sm:text-xs">
+          {Array.from({ length: 2 }).map((_, block) => (
+            <span key={block} className="inline-flex shrink-0">
+              {Array.from({ length: 8 }).map((__, i) => (
+                <span key={i} className="px-6">
+                  BUILD UNFAIR MOAT // UNFAIR MOAT //
+                </span>
+              ))}
+            </span>
+          ))}
         </div>
-      </main>
+      </div>
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-skaus-border py-6 px-4 sm:px-6 lg:px-12 pb-safe-modal">
-        <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-3 sm:gap-4 text-xs text-skaus-muted text-center sm:text-left">
-          <span className="shrink-0">SKAUS Protocol — Solana Devnet</span>
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:gap-6">
-            <span>Stealth Addresses</span>
-            <span className="hidden sm:inline text-skaus-border">|</span>
-            <span>Groth16 Proofs</span>
-            <span className="hidden sm:inline text-skaus-border">|</span>
-            <span>On-Chain Privacy</span>
-          </div>
+      <footer className="relative z-10 flex shrink-0 flex-col gap-6 border-t border-neutral-900 px-4 py-8 text-[10px] tracking-wide text-neutral-500 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:text-xs lg:px-12">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="font-black italic" style={{ color: RED }}>
+            SKAUS
+          </span>
+          <span className="font-mono text-neutral-600">
+            © {new Date().getFullYear()} SKAUS PROTOCOL. NO TRACES LEFT.
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-6 font-semibold uppercase tracking-wider">
+          <a href="#audit" className="transition-colors hover:text-white">
+            AUDIT
+          </a>
+          <a href="#docs" className="transition-colors hover:text-white">
+            DOCS
+          </a>
+          <a href="#privacy" className="transition-colors hover:text-white">
+            PRIVACY
+          </a>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-neutral-600">
+          <ShareIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AtIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>NODE: DX902…ACTIVE</span>
         </div>
       </footer>
     </div>
   );
 }
 
-function FeatureBlock({ label, title, description }: { label: string; title: string; description: string }) {
+function PadlockIcon({ className }: { className?: string }) {
   return (
-    <div className="glass-card-hover p-6 text-left space-y-3 group">
-      <span className="section-label text-skaus-primary">{label}</span>
-      <h3 className="text-lg font-bold text-white">{title}</h3>
-      <p className="text-sm text-skaus-muted leading-relaxed">{description}</p>
-    </div>
+    <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M9 14V11a7 7 0 0114 0v3"
+        stroke="currentColor"
+        strokeWidth="2.25"
+        strokeLinecap="round"
+      />
+      <rect x="6" y="14" width="20" height="15" rx="2.25" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SparklineIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M2 18 L10 8 L18 14 L26 4 L34 12 L42 6 L46 10"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ShareIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+      />
+    </svg>
+  );
+}
+
+function AtIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+      />
+    </svg>
   );
 }

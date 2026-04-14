@@ -128,6 +128,19 @@
     pointer-events: none;
     z-index: 0;
   }
+
+  @keyframes landing-marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .landing-marquee-track {
+    animation: landing-marquee 28s linear infinite;
+  }
 }
 
 /*
