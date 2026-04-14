@@ -7,6 +7,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // DATABASE_URL must include ?connection_limit=200 (or higher) to prevent
+  // pool exhaustion under the queue processor's concurrent polling load.
+  // Prisma's default pool size (97) is insufficient when multiple jobs fire
+  // concurrent queries on a short poll interval.
+  // Example: postgres://user:pass@host:5432/db?connection_limit=200
   url      = env("DATABASE_URL")
 }
 
