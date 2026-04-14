@@ -3,6 +3,19 @@ import { prisma } from './db';
 import { WithdrawExecutor } from './executor';
 import { config } from './config';
 
+/**
+ * Race a promise against a timeout. Rejects with a descriptive error if the
+ * timeout fires first, so DB queries can never hang the poll loop indefinitely.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 const logger = pino({
   level: config.logLevel,
   transport:
@@ -51,7 +64,11 @@ export class QueueProcessor {
   }
 
   async pendingCount(): Promise<number> {
-    return prisma.withdrawalJob.count({ where: { status: 'pending' } });
+    return withTimeout(
+      prisma.withdrawalJob.count({ where: { status: 'pending' } }),
+      config.relayer.dbQueryTimeoutMs,
+      'pendingCount DB query',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -65,6 +82,8 @@ export class QueueProcessor {
 
   private async _poll(): Promise<void> {
     this.timer = null;
+    const dbTimeoutMs = config.relayer.dbQueryTimeoutMs;
+    logger.debug({ activeJobs: this.activeJobs }, 'Queue poll tick');
     try {
       const capacity = config.relayer.maxConcurrent - this.activeJobs;
       if (capacity <= 0) {
@@ -74,16 +93,21 @@ export class QueueProcessor {
       }
 
       // Fetch jobs that are still retryable and not currently being processed
-      const jobs = await prisma.withdrawalJob.findMany({
-        where: {
-          status: 'pending',
-          attempts: { lt: config.relayer.maxAttempts },
-        },
-        orderBy: { createdAt: 'asc' },
-        take: capacity,
-      });
+      const jobs = await withTimeout(
+        prisma.withdrawalJob.findMany({
+          where: {
+            status: 'pending',
+            attempts: { lt: config.relayer.maxAttempts },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: capacity,
+        }),
+        dbTimeoutMs,
+        'findMany pending jobs',
+      );
 
       if (jobs.length === 0) {
+        logger.debug('No pending jobs found');
         this._scheduleNextPoll();
         return;
       }
@@ -92,10 +116,14 @@ export class QueueProcessor {
 
       // Mark all as processing atomically before we kick them off
       const ids = jobs.map((j) => j.id);
-      await prisma.withdrawalJob.updateMany({
-        where: { id: { in: ids }, status: 'pending' },
-        data: { status: 'processing' },
-      });
+      await withTimeout(
+        prisma.withdrawalJob.updateMany({
+          where: { id: { in: ids }, status: 'pending' },
+          data: { status: 'processing' },
+        }),
+        dbTimeoutMs,
+        'updateMany jobs to processing',
+      );
 
       // Fire off all jobs concurrently (up to capacity)
       for (const job of jobs) {
@@ -144,11 +172,17 @@ export class QueueProcessor {
       tokenMint: string;
     },
   ): Promise<void> {
+    const dbTimeoutMs = config.relayer.dbQueryTimeoutMs;
+
     // Increment attempt counter up-front
-    const updated = await prisma.withdrawalJob.update({
-      where: { id },
-      data: { attempts: { increment: 1 } },
-    });
+    const updated = await withTimeout(
+      prisma.withdrawalJob.update({
+        where: { id },
+        data: { attempts: { increment: 1 } },
+      }),
+      dbTimeoutMs,
+      `increment attempts for job ${id}`,
+    );
 
     const attemptNumber = updated.attempts;
     logger.info({ id, attempt: attemptNumber }, 'Processing withdrawal job');
@@ -156,14 +190,18 @@ export class QueueProcessor {
     try {
       const result = await this.executor.execute(params);
 
-      await prisma.withdrawalJob.update({
-        where: { id },
-        data: {
-          status: 'confirmed',
-          txSignature: result.txSignature,
-          lastError: null,
-        },
-      });
+      await withTimeout(
+        prisma.withdrawalJob.update({
+          where: { id },
+          data: {
+            status: 'confirmed',
+            txSignature: result.txSignature,
+            lastError: null,
+          },
+        }),
+        dbTimeoutMs,
+        `mark job ${id} confirmed`,
+      );
 
       logger.info({ id, txSignature: result.txSignature }, 'Job confirmed');
     } catch (err) {
@@ -171,13 +209,17 @@ export class QueueProcessor {
       const exhausted = attemptNumber >= config.relayer.maxAttempts;
       const nextStatus = exhausted ? 'failed' : 'pending';
 
-      await prisma.withdrawalJob.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          lastError: errorMessage,
-        },
-      });
+      await withTimeout(
+        prisma.withdrawalJob.update({
+          where: { id },
+          data: {
+            status: nextStatus,
+            lastError: errorMessage,
+          },
+        }),
+        dbTimeoutMs,
+        `mark job ${id} as ${nextStatus}`,
+      );
 
       if (exhausted) {
         logger.error({ id, error: errorMessage }, 'Job failed — max attempts exhausted');
