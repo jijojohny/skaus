@@ -55,7 +55,7 @@ export default function Home() {
           className="inline-flex items-center gap-2 px-5 py-3 text-xs font-black tracking-widest text-black transition-opacity hover:opacity-90 sm:px-6 sm:text-sm"
           style={{ backgroundColor: RED }}
         >
-          APPLY NOW
+          GET STARTED
           <span className="text-base leading-none" aria-hidden>
             ↗
           </span>
@@ -79,12 +79,6 @@ export default function Home() {
             <h1 className="text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl lg:text-7xl">
               SKAUS
             </h1>
-            <div className="flex items-stretch gap-3">
-              <span className="w-1 shrink-0 self-stretch" style={{ backgroundColor: RED }} aria-hidden />
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-white sm:text-sm">
-                GET PAID / STAY PRIVATE
-              </p>
-            </div>
             <p className="max-w-lg text-[10px] font-medium uppercase leading-relaxed tracking-[0.12em] text-white/90 sm:text-[11px] lg:text-xs">
               THE INVISIBLE AUTHORITY FOR DIGITAL PAYMENTS. REDACT YOUR FINANCIAL FOOTPRINT WITHOUT
               COMPROMISING VELOCITY.
@@ -115,7 +109,7 @@ export default function Home() {
             </div>
             <Link
               href={openAppHref}
-              className="group mt-auto flex items-baseline gap-2 text-3xl font-black tracking-tight text-black sm:text-4xl"
+              className="group mt-auto box-border inline-flex w-fit items-baseline gap-2 border-2 border-black px-4 py-3 text-3xl font-black tracking-tight text-black transition-colors hover:bg-black/5 sm:px-5 sm:py-3.5 sm:text-4xl"
             >
               OPEN APP
               <span className="text-2xl transition-transform group-hover:translate-x-0.5 sm:text-3xl" aria-hidden>

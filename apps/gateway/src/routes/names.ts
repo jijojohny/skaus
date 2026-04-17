@@ -140,12 +140,40 @@ export async function nameRoutes(app: FastifyInstance) {
 
         // Persist username→nameHash early so returning users can resolve their
         // link on any device, even before the indexer picks up the on-chain tx.
+        const nameHashB58 = bs58.encode(nameHash);
         try {
-          const nameHashB58 = bs58.encode(nameHash);
           await prisma.profile.upsert({
             where: { username },
             update: { nameHash: nameHashB58 },
             create: { username, nameHash: nameHashB58 },
+          });
+        } catch {}
+
+        // Create the personal payment link entry so every registered user
+        // has a queryable row in payment_requests from day one.
+        try {
+          const now = BigInt(Date.now());
+          await prisma.paymentRequest.upsert({
+            where: { username_slug: { username, slug: 'personal' } },
+            update: {},
+            create: {
+              id: `personal-${username}`,
+              creator: authority,
+              username,
+              slug: 'personal',
+              amount: 0,
+              token: 'USDC',
+              memo: '',
+              title: 'Personal',
+              openAmount: true,
+              expiresAt: null,
+              maxPayments: 999999,
+              depositPathIndex: 0,
+              status: 'pending',
+              views: 0,
+              createdAt: now,
+              updatedAt: now,
+            },
           });
         } catch {}
 
