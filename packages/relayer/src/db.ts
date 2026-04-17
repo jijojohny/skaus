@@ -14,7 +14,7 @@ function buildDatabaseUrl(): string | undefined {
   if (!raw) return raw;
   if (raw.includes('connection_limit=')) return raw;
   const separator = raw.includes('?') ? '&' : '?';
-  return `${raw}${separator}connection_limit=200`;
+  return `${raw}${separator}connection_limit=50`;
 }
 
 export const prisma =
