@@ -5,7 +5,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useWallets, useSignMessage } from '@privy-io/react-auth/solana';
 import { useRouter } from 'next/navigation';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { fetchDeposits, getRelayStatus, lookupByAuthority } from '@/lib/gateway';
+import { getRelayStatus, lookupByAuthority } from '@/lib/gateway';
 import { scanForDeposits, scanDepositsOnChain, type ScannedDeposit } from '@/lib/scan';
 import { executeWithdraw } from '@/lib/withdraw';
 import { config, getPublicProfileUrl } from '@/lib/config';
@@ -359,92 +359,68 @@ export default function DashboardPage() {
   return (
     <>
       <DashboardShell
-        title="Dashboard"
-        headerRight={
-          <>
-            {relayActive !== null && (
-              <span
-                className={`hidden sm:inline-flex text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
-                  relayActive
-                    ? 'bg-skaus-success/10 text-skaus-success border border-skaus-success/20'
-                    : 'bg-skaus-warning/10 text-skaus-warning border border-skaus-warning/20'
-                }`}
-              >
-                Relay {relayActive ? 'Active' : 'Offline'}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => { setScanError(null); setShowScanModal(true); setTimeout(() => modalPinRefs.current[0]?.focus(), 100); }}
-              disabled={scanning}
-              className="flex items-center gap-2 px-4 py-2 bg-skaus-primary hover:bg-skaus-primary-hover text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
-            >
-              <svg
-                className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
-                />
-              </svg>
-              {scanning ? 'Scanning...' : 'Scan'}
-            </button>
-          </>
+        networkStatus={
+          relayActive === null ? 'SYNCING' : relayActive ? 'OPTIMIZED' : 'DEGRADED'
         }
       >
-        <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 space-y-6 max-w-5xl w-full mx-auto min-w-0">
+        <div className="mx-auto min-w-0 max-w-6xl space-y-4 px-4 py-6 sm:px-6 lg:px-10">
           {scanError && (
-            <div className="flex items-center gap-3 p-3 bg-skaus-warning/5 border border-skaus-warning/20 rounded-xl text-sm text-skaus-warning">
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="flex items-center gap-3 border border-skaus-warning/30 bg-skaus-warning/5 p-3 text-xs text-skaus-warning">
+              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
               {scanError}
             </div>
           )}
 
-          {/* Stealth Balances Card */}
-          <div className="rounded-2xl border border-skaus-primary/30 bg-gradient-to-br from-skaus-surface via-skaus-darker to-skaus-surface p-6 space-y-5 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-skaus-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-
-            <div className="relative flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-skaus-muted-light">Your Stealth Balances</h2>
-                <svg className="w-3.5 h-3.5 text-skaus-muted cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                </svg>
+          {/* Asset overview + quick actions */}
+          <div className="border border-neutral-800 bg-[#0a0a0a] lg:grid lg:grid-cols-2 lg:divide-x lg:divide-neutral-800">
+            <div className="space-y-6 p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-bold tracking-[0.2em] text-skaus-primary">TOTAL_SECURED_ASSETS</p>
+                  <p className="mt-3 text-4xl font-black tracking-tight text-white md:text-5xl">
+                    <span className="text-white">$</span>
+                    {deposits.length > 0 ? (
+                      (() => {
+                        const s = formatAmount(totalBalance);
+                        const parts = s.split('.');
+                        return parts.length > 1 ? (
+                          <>
+                            {parts[0]}
+                            <span className="text-neutral-500">.{parts[1]}</span>
+                          </>
+                        ) : (
+                          s
+                        );
+                      })()
+                    ) : (
+                      <>
+                        0<span className="text-neutral-500">.00</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScanError(null);
+                    setShowScanModal(true);
+                    setTimeout(() => modalPinRefs.current[0]?.focus(), 100);
+                  }}
+                  disabled={scanning}
+                  className="inline-flex items-center gap-2 border border-skaus-primary bg-skaus-primary px-3 py-2 text-[10px] font-bold tracking-[0.15em] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  <BarcodeIcon className={`h-4 w-4 ${scanning ? 'animate-pulse' : ''}`} />
+                  SCAN_LEDGER
+                </button>
               </div>
-              <button
-                onClick={() => { setScanError(null); setShowScanModal(true); setTimeout(() => modalPinRefs.current[0]?.focus(), 100); }}
-                disabled={scanning}
-                className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-30"
-                title="Scan for deposits"
-              >
-                <svg className={`w-4 h-4 text-skaus-muted ${scanning ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Balance display */}
-            <div className="relative">
-              <p className="text-4xl font-black text-white tracking-tight">
-                {deposits.length > 0 ? formatAmount(totalBalance) : '$0.00'}
-                <span className="text-lg font-medium text-skaus-muted ml-2">
-                  {deposits.length > 0 ? 'USDC' : 'USD'}
-                </span>
+              <p className="flex flex-wrap items-center gap-2 text-[10px] font-medium tracking-wide text-neutral-500">
+                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-skaus-primary" aria-hidden />
+                LIVE ENCRYPTED_WALLET_LINKED
               </p>
-            </div>
-
-            {/* Token list */}
-            <div className="relative">
-              <p className="text-xs font-semibold text-skaus-muted uppercase tracking-wider mb-3">Tokens</p>
               {deposits.filter(d => d.status === 'available').length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1 border-t border-neutral-800 pt-4 text-[10px] text-neutral-400">
                   {(() => {
                     const tokenMap = new Map<string, bigint>();
                     deposits.filter(d => d.status === 'available').forEach(d => {
@@ -452,283 +428,251 @@ export default function DashboardPage() {
                       tokenMap.set(d.token, prev + d.amount);
                     });
                     return Array.from(tokenMap.entries()).map(([token, amount]) => (
-                      <div key={token} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.05] transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-skaus-primary/15 flex items-center justify-center">
-                            <span className="text-xs font-black text-skaus-primary">{token[0]}</span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-white">{formatAmount(amount)} <span className="text-skaus-muted font-medium">{token}</span></p>
-                            <p className="text-[10px] text-skaus-muted">Stealth Token</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-skaus-muted">$0.00</p>
-                          <svg className="w-3.5 h-3.5 text-skaus-muted/50 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                          </svg>
-                        </div>
+                      <div key={token} className="flex justify-between font-mono">
+                        <span className="text-neutral-500">{token}</span>
+                        <span className="text-white">{formatAmount(amount)}</span>
                       </div>
                     ));
                   })()}
                 </div>
-              ) : (
-                <div className="py-4 px-3 rounded-xl bg-white/[0.02] text-center">
-                  <p className="text-xs text-skaus-muted">No tokens found. Click <span className="text-skaus-primary font-semibold">Scan</span> to check for deposits.</p>
-                </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Payments received banner */}
-            <div className="relative pt-3 border-t border-white/5">
-              <p className="text-xs text-center font-medium text-skaus-primary/80">
-                Payments received privately through SKAUS
+            <div className="border-t border-neutral-800 p-5 sm:p-6 lg:border-t-0">
+              <p className="text-xs font-bold tracking-[0.18em] text-white">QUICK_ACTION</p>
+              <p className="mt-2 max-w-sm text-[11px] leading-relaxed text-neutral-500">
+                Access private liquidity pools or execute stealth-order routing.
               </p>
+              <div className="mt-6 flex flex-col gap-3">
+                <Link
+                  href="/dashboard/activities"
+                  className="inline-flex items-center justify-center border border-skaus-primary bg-skaus-primary px-4 py-3 text-center text-[11px] font-bold tracking-[0.18em] text-white transition-opacity hover:opacity-90"
+                >
+                  SWAP_ASSETS
+                </Link>
+                <Link
+                  href="/dashboard/links/personal"
+                  className="inline-flex items-center justify-center border border-neutral-600 bg-transparent px-4 py-3 text-center text-[11px] font-bold tracking-[0.18em] text-white transition-colors hover:border-neutral-400"
+                >
+                  GENERATE_ADDRESS
+                </Link>
+              </div>
             </div>
           </div>
 
-          {/* Personalised link — always visible */}
-          <div className="rounded-2xl border border-skaus-border bg-skaus-surface/80 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-white">Your personal link</h3>
-                <p className="text-xs text-skaus-muted mt-0.5">Share to get paid</p>
-              </div>
+          {/* Personal link */}
+          <div className="border border-neutral-800 bg-[#0a0a0a] p-5 sm:p-6">
+            <div className="flex items-center gap-2 text-xs font-bold tracking-[0.15em] text-white">
+              <LinkGlyph className="h-4 w-4 text-neutral-400" />
+              YOUR_PERSONAL_LINK
             </div>
+            <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-neutral-500">
+              Unique identifier for peer-to-peer settlement and encrypted handshakes.
+            </p>
 
-            <label htmlFor="dashboard-personalised-link" className="block text-[11px] font-semibold uppercase tracking-wider text-skaus-muted mb-2">
-              Personalised link
-            </label>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex flex-1 items-center gap-3 min-w-0 bg-skaus-darker rounded-xl px-3 py-2 border border-skaus-border">
-                <div className="w-8 h-8 rounded-full bg-skaus-primary/15 flex items-center justify-center shrink-0">
-                  <span className="text-xs font-black text-skaus-primary">S</span>
-                </div>
-                <input
-                  id="dashboard-personalised-link"
-                  readOnly
-                  value={registeredName ? getPublicProfileUrl(registeredName) : ''}
-                  placeholder="Complete onboarding to get your link"
-                  className="flex-1 min-w-0 bg-transparent border-0 text-sm font-mono text-white placeholder:text-skaus-muted/70 focus:outline-none focus:ring-0"
-                />
+            {!registeredName ? (
+              <div className="mt-5 border-b-2 border-skaus-primary bg-black/40 px-4 py-4">
+                <p className="text-[10px] font-bold tracking-[0.2em] text-skaus-primary">PENDING_VERIFICATION</p>
+                <p className="mt-2 text-xs text-white">Complete onboarding to get your link</p>
               </div>
-
-              <div className="flex items-center justify-end gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  disabled={!registeredName}
-                  className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  title="Copy link"
-                >
-                  {linkCopied ? (
-                    <svg className="w-4 h-4 text-skaus-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-                    </svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => registeredName && setShowQrModal(true)}
-                  disabled={!registeredName}
-                  className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  title="Show QR code"
-                >
-                  <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
-                  </svg>
-                </button>
-                {registeredName ? (
+            ) : (
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3 border border-neutral-800 bg-black/50 px-3 py-2.5">
+                  <input
+                    id="dashboard-personalised-link"
+                    readOnly
+                    value={getPublicProfileUrl(registeredName)}
+                    className="min-w-0 flex-1 bg-transparent font-mono text-xs text-white focus:outline-none"
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    className="border border-neutral-700 px-3 py-2 text-[10px] font-bold tracking-wider text-neutral-300 hover:border-neutral-500 hover:text-white"
+                  >
+                    {linkCopied ? 'COPIED' : 'COPY'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="border border-neutral-700 px-3 py-2 text-[10px] font-bold tracking-wider text-neutral-300 hover:border-neutral-500 hover:text-white"
+                  >
+                    QR
+                  </button>
                   <Link
                     href={`/${registeredName}`}
-                    className="p-2 rounded-lg hover:bg-white/5 transition-colors"
-                    title="Open your profile"
+                    className="border border-skaus-primary bg-skaus-primary px-3 py-2 text-[10px] font-bold tracking-wider text-white hover:opacity-90"
                   >
-                    <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                    </svg>
+                    OPEN
                   </Link>
-                ) : (
-                  <Link
-                    href="/onboarding"
-                    className="p-2 rounded-lg hover:bg-white/5 transition-colors text-xs font-semibold text-skaus-primary px-3"
-                    title="Claim your username"
-                  >
-                    Set up
-                  </Link>
-                )}
+                </div>
               </div>
-            </div>
-            {!registeredName && (
-              <p className="text-[11px] text-skaus-muted mt-3">
-                Finish onboarding to show your public pay link here. It is stored on this device after you register.
-              </p>
             )}
           </div>
 
-          {/* Activity Section */}
-          <div className="rounded-2xl border border-skaus-border bg-skaus-surface/80 overflow-hidden">
-            {/* Activity header with tabs */}
-            <div className="px-5 py-4 border-b border-skaus-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-1">
+          {/* Transaction ledger */}
+          <div id="transaction-ledger" className="border border-neutral-800 bg-[#0a0a0a]">
+            <div className="flex flex-col gap-4 border-b border-neutral-800 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <h2 className="text-xs font-bold tracking-[0.18em] text-white">TRANSACTION_LEDGER</h2>
+              <div className="flex flex-wrap items-center gap-2">
                 {(['all', 'incoming', 'outgoing'] as ActivityFilter[]).map(filter => (
                   <button
                     key={filter}
+                    type="button"
                     onClick={() => setActivityFilter(filter)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    className={`px-3 py-1.5 text-[10px] font-bold tracking-[0.15em] transition-colors ${
                       activityFilter === filter
                         ? 'bg-skaus-primary text-white'
-                        : 'text-skaus-muted hover:text-white hover:bg-white/5'
+                        : 'border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-white'
                     }`}
                   >
-                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                    {filter.toUpperCase()}
                   </button>
                 ))}
               </div>
-
-              <div className="flex flex-wrap items-center gap-2 justify-end">
-                {availableInFilter.length > 0 && activityFilter !== 'outgoing' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedDepositIds(
-                          new Set(availableInFilter.map(d => d.id)),
-                        )
-                      }
-                      className="px-2.5 py-1.5 rounded-lg border border-skaus-border text-[10px] font-semibold text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-colors"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDepositIds(new Set())}
-                      disabled={selectedDepositIds.size === 0}
-                      className="px-2.5 py-1.5 rounded-lg border border-skaus-border text-[10px] font-semibold text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-colors disabled:opacity-40"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openWithdrawModal(selectedAvailableIds)}
-                      disabled={selectedAvailableIds.length === 0}
-                      className="px-3 py-1.5 rounded-lg bg-skaus-primary/15 text-skaus-primary text-[10px] font-bold hover:bg-skaus-primary/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      Withdraw selected{selectedAvailableIds.length > 0 ? ` (${selectedAvailableIds.length})` : ''}
-                    </button>
-                  </>
-                )}
-                <select
-                  value={scanMode}
-                  onChange={(e) => setScanMode(e.target.value as 'indexer' | 'onchain')}
-                  className="px-2.5 py-1.5 rounded-lg bg-skaus-darker border border-skaus-border text-[10px] text-skaus-muted focus:outline-none focus:border-skaus-primary"
-                >
-                  <option value="indexer">Indexer</option>
-                  <option value="onchain">On-chain</option>
-                </select>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-skaus-border text-xs text-skaus-muted hover:text-white hover:border-skaus-border-hover transition-colors">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  Export CSV
-                </button>
-              </div>
             </div>
 
-            {/* Activity list */}
-            {filteredDeposits.length === 0 ? (
-              <div className="px-6 py-16 text-center space-y-2">
-                <div className="w-12 h-12 mx-auto rounded-full bg-skaus-surface flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-                  </svg>
+            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-3 sm:px-5">
+              {availableInFilter.length > 0 && activityFilter !== 'outgoing' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDepositIds(new Set(availableInFilter.map(d => d.id)))}
+                    className="border border-neutral-700 px-2.5 py-1 text-[9px] font-bold tracking-wider text-neutral-400 hover:text-white"
+                  >
+                    SELECT_ALL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDepositIds(new Set())}
+                    disabled={selectedDepositIds.size === 0}
+                    className="border border-neutral-700 px-2.5 py-1 text-[9px] font-bold tracking-wider text-neutral-400 hover:text-white disabled:opacity-40"
+                  >
+                    CLEAR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openWithdrawModal(selectedAvailableIds)}
+                    disabled={selectedAvailableIds.length === 0}
+                    className="border border-skaus-primary/50 bg-skaus-primary/10 px-2.5 py-1 text-[9px] font-bold tracking-wider text-skaus-primary hover:bg-skaus-primary/20 disabled:opacity-40"
+                  >
+                    WITHDRAW_SEL
+                    {selectedAvailableIds.length > 0 ? ` (${selectedAvailableIds.length})` : ''}
+                  </button>
+                </>
+              )}
+              <select
+                value={scanMode}
+                onChange={e => setScanMode(e.target.value as 'indexer' | 'onchain')}
+                className="border border-neutral-700 bg-black px-2 py-1 text-[9px] font-mono text-neutral-400 focus:outline-none focus:ring-1 focus:ring-skaus-primary"
+              >
+                <option value="indexer">INDEXER</option>
+                <option value="onchain">ONCHAIN</option>
+              </select>
+              <span className="text-[9px] text-neutral-600">CSV_EXPORT_SOON</span>
+            </div>
+
+            {filteredDeposits.length === 0 && deposits.length === 0 ? (
+              <div className="divide-y divide-neutral-800">
+                <LedgerDemoRow
+                  icon="in"
+                  title="ENCRYPTED_INBOUND_SESSION"
+                  id="#ST-882-QX"
+                  amount="+$0.00"
+                  amountClass="text-skaus-primary"
+                  status="STALE_DATA"
+                />
+                <LedgerDemoRow
+                  icon="lock"
+                  title="SYSTEM_CALIBRATION_FEE"
+                  id="#SYS-001-ALPHA"
+                  amount="-$0.00"
+                  amountClass="text-white"
+                  status="VOIDED"
+                />
+                <div className="px-5 py-10 text-center">
+                  <p className="text-[11px] text-neutral-500">
+                    Scan the ledger or share your link to populate live entries.
+                  </p>
                 </div>
-                <p className="text-sm text-skaus-muted">No activity yet</p>
-                <p className="text-xs text-skaus-muted/60">
-                  Scan for deposits or share your link to receive payments.
-                </p>
+              </div>
+            ) : filteredDeposits.length === 0 ? (
+              <div className="px-6 py-14 text-center">
+                <p className="text-[11px] font-bold tracking-wider text-neutral-500">NO_ENTRIES_FOR_FILTER</p>
               </div>
             ) : (
-              <div className="divide-y divide-skaus-border/50">
+              <div className="divide-y divide-neutral-800">
                 {filteredDeposits.map(deposit => (
-                  <div key={deposit.id} className="px-5 py-4 hover:bg-white/[0.02] transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0">
+                  <div key={deposit.id} className="px-4 py-4 transition-colors hover:bg-white/[0.02] sm:px-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex min-w-0 items-start gap-3">
                         {deposit.status === 'available' && activityFilter !== 'outgoing' && (
                           <input
                             type="checkbox"
                             checked={selectedDepositIds.has(deposit.id)}
                             onChange={() => toggleDepositSelected(deposit.id)}
-                            className="h-4 w-4 rounded border-skaus-border bg-skaus-darker text-skaus-primary focus:ring-skaus-primary shrink-0"
+                            className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-neutral-600 bg-black text-skaus-primary focus:ring-skaus-primary"
                             aria-label={`Select deposit ${deposit.commitment.slice(0, 8)}`}
                           />
                         )}
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                          deposit.status === 'available'
-                            ? 'bg-skaus-success/10'
-                            : deposit.status === 'withdrawn'
-                              ? 'bg-skaus-muted/10'
-                              : deposit.status === 'withdrawing'
-                                ? 'bg-skaus-primary/10'
-                                : 'bg-skaus-error/10'
-                        }`}>
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center border border-neutral-700 bg-neutral-950 ${
+                            deposit.status === 'available' ? 'text-skaus-primary' : 'text-neutral-400'
+                          }`}
+                        >
                           {deposit.status === 'available' ? (
-                            <svg className="w-4 h-4 text-skaus-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                             </svg>
                           ) : deposit.status === 'withdrawn' ? (
-                            <svg className="w-4 h-4 text-skaus-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                             </svg>
                           ) : deposit.status === 'withdrawing' ? (
-                            <div className="w-4 h-4 border-2 border-skaus-primary border-t-transparent rounded-full animate-spin" />
+                            <div className="h-4 w-4 animate-spin border-2 border-skaus-primary border-t-transparent" />
                           ) : (
-                            <svg className="w-4 h-4 text-skaus-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <svg className="h-5 w-5 text-skaus-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                             </svg>
                           )}
                         </div>
-
-                        <div>
-                          <p className="text-sm font-medium text-white">
-                            {deposit.status === 'available' ? 'Received from ' : 'Withdrawn '}
-                            <span className="text-skaus-muted font-mono text-xs">
-                              {deposit.commitment.slice(0, 6)}...{deposit.commitment.slice(-4)}
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-white">
+                            {deposit.status === 'available' ? 'INBOUND_COMMIT' : 'OUTBOUND_SETTLEMENT'}{' '}
+                            <span className="font-mono font-normal text-neutral-500 normal-case tracking-normal">
+                              {deposit.commitment.slice(0, 6)}…{deposit.commitment.slice(-4)}
                             </span>
                           </p>
-                          <p className="text-[10px] text-skaus-muted mt-0.5">
-                            {deposit.token} &middot; {new Date(deposit.timestamp * 1000).toLocaleDateString()} &middot; Leaf #{deposit.leafIndex}
+                          <p className="mt-1 font-mono text-[10px] text-neutral-500">
+                            {deposit.token} · {new Date(deposit.timestamp * 1000).toLocaleDateString()} · LEAF_{deposit.leafIndex}
                           </p>
                           {deposit.status === 'available' && (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-skaus-primary/10 text-skaus-primary">
-                                stealth
-                              </span>
-                            </div>
+                            <span className="mt-2 inline-block border border-skaus-primary/40 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-skaus-primary">
+                              STEALTH
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="text-right flex items-center gap-3">
-                        <div>
-                          <p className={`text-sm font-bold ${
-                            deposit.status === 'available' ? 'text-skaus-success' : 'text-white'
-                          }`}>
-                            {deposit.status === 'available' ? '+' : ''}{formatAmount(deposit.amount)} {deposit.token}
+                      <div className="flex flex-wrap items-center justify-end gap-3">
+                        <div className="text-right">
+                          <p
+                            className={`text-sm font-bold ${
+                              deposit.status === 'available' ? 'text-skaus-primary' : 'text-white'
+                            }`}
+                          >
+                            {deposit.status === 'available' ? '+' : ''}
+                            {formatAmount(deposit.amount)} {deposit.token}
                           </p>
                         </div>
                         {deposit.status === 'available' && (
                           <button
                             type="button"
                             onClick={() => openWithdrawModal([deposit.id])}
-                            className="px-3 py-1.5 bg-skaus-primary/10 text-skaus-primary text-xs font-bold rounded-lg hover:bg-skaus-primary/20 transition-colors"
+                            className="border border-skaus-primary/50 bg-skaus-primary/10 px-3 py-1.5 text-[10px] font-bold tracking-wider text-skaus-primary hover:bg-skaus-primary/20"
                           >
-                            Withdraw
+                            WITHDRAW
                           </button>
                         )}
                       </div>
@@ -739,18 +683,37 @@ export default function DashboardPage() {
                         href={`https://explorer.solana.com/tx/${deposit.withdrawTx}?cluster=devnet`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 ml-0 sm:ml-12 text-[10px] text-skaus-success hover:underline block font-mono break-all"
+                        className="mt-3 block font-mono text-[10px] text-skaus-success hover:underline sm:ml-[3.25rem]"
                       >
-                        TX: {deposit.withdrawTx.slice(0, 32)}...
+                        TX:{deposit.withdrawTx.slice(0, 24)}…
                       </a>
                     )}
                     {deposit.withdrawError && (
-                      <p className="mt-2 ml-0 sm:ml-12 text-[10px] text-skaus-error break-words">{deposit.withdrawError}</p>
+                      <p className="mt-2 font-mono text-[10px] text-skaus-error sm:ml-[3.25rem]">{deposit.withdrawError}</p>
                     )}
                   </div>
                 ))}
               </div>
             )}
+
+            <div className="flex flex-col items-center justify-between gap-3 border-t border-neutral-800 px-4 py-4 text-[10px] text-neutral-600 sm:flex-row sm:px-5">
+              <span className="font-mono tracking-widest">END_OF_LEDGER</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanError(null);
+                  setShowScanModal(true);
+                  setTimeout(() => modalPinRefs.current[0]?.focus(), 100);
+                }}
+                disabled={scanning}
+                className="inline-flex items-center gap-2 font-bold tracking-[0.2em] text-neutral-400 hover:text-white disabled:opacity-40"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                </svg>
+                SYNC_FULL_HISTORY
+              </button>
+            </div>
           </div>
         </div>
       </DashboardShell>
@@ -968,5 +931,72 @@ export default function DashboardPage() {
         </div>
       )}
     </>
+  );
+}
+
+function BarcodeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="3" y="4" width="1.5" height="16" rx="0.5" />
+      <rect x="6" y="4" width="2.5" height="16" rx="0.5" />
+      <rect x="10" y="4" width="1.5" height="16" rx="0.5" />
+      <rect x="13" y="4" width="3" height="16" rx="0.5" />
+      <rect x="17.5" y="4" width="1.5" height="16" rx="0.5" />
+      <rect x="20" y="4" width="2" height="16" rx="0.5" />
+    </svg>
+  );
+}
+
+function LinkGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-3.06a4.5 4.5 0 00-1.242-7.244l4.5-4.5a4.5 4.5 0 016.364 6.364l-1.757 1.757" />
+    </svg>
+  );
+}
+
+function LedgerDemoRow({
+  icon,
+  title,
+  id,
+  amount,
+  amountClass,
+  status,
+}: {
+  icon: 'in' | 'lock';
+  title: string;
+  id: string;
+  amount: string;
+  amountClass: string;
+  status: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4 sm:px-5">
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center border border-neutral-700 bg-neutral-950 ${
+            icon === 'in' ? 'text-skaus-primary' : 'text-neutral-300'
+          }`}
+        >
+          {icon === 'in' ? (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          ) : (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-white">{title}</p>
+          <p className="mt-1 font-mono text-[10px] text-neutral-500">{id}</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className={`text-sm font-bold ${amountClass}`}>{amount}</p>
+        <p className="mt-1 text-[9px] font-bold tracking-wider text-neutral-500">{status}</p>
+      </div>
+    </div>
   );
 }
