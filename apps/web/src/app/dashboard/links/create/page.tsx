@@ -48,18 +48,34 @@ export default function CreateLinkPage() {
 
   useEffect(() => {
     if (!walletAddress) return;
+
     lookupByAuthority(walletAddress)
       .then(r => {
-        if (!r.registered) router.push('/onboarding');
+        if (!r.registered) {
+          router.push('/onboarding');
+          return;
+        }
+
+        try {
+          const n = localStorage.getItem('skaus_username');
+          const w = localStorage.getItem('skaus_wallet');
+          if (n && w === walletAddress) {
+            setRegisteredName(n);
+            return;
+          }
+        } catch { /* ignore */ }
+
+        // Fallback: resolve from gateway (covers new devices / cleared storage)
+        const username = r.names[0]?.username;
+        if (username) {
+          setRegisteredName(username);
+          try {
+            localStorage.setItem('skaus_username', username);
+            localStorage.setItem('skaus_wallet', walletAddress);
+          } catch { /* ignore */ }
+        }
       })
       .catch(() => {});
-    try {
-      const n = localStorage.getItem('skaus_username');
-      const w = localStorage.getItem('skaus_wallet');
-      if (n && w === walletAddress) setRegisteredName(n);
-    } catch {
-      /* ignore */
-    }
   }, [walletAddress, router]);
 
   const handleCreate = async () => {
