@@ -29,6 +29,9 @@ export class QueueProcessor {
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private activeJobs = 0;
+  private backoffMs = 0;
+  private readonly backoffInitialMs = 1_000;
+  private readonly backoffMaxMs = 30_000;
 
   constructor(executor: WithdrawExecutor) {
     this.executor = executor;
@@ -77,7 +80,8 @@ export class QueueProcessor {
 
   private _scheduleNextPoll(): void {
     if (!this.running) return;
-    this.timer = setTimeout(() => this._poll(), config.relayer.pollIntervalMs);
+    const delay = this.backoffMs > 0 ? this.backoffMs : config.relayer.pollIntervalMs;
+    this.timer = setTimeout(() => this._poll(), delay);
   }
 
   private async _poll(): Promise<void> {
@@ -108,11 +112,13 @@ export class QueueProcessor {
 
       if (jobs.length === 0) {
         logger.debug('No pending jobs found');
+        this.backoffMs = 0;
         this._scheduleNextPoll();
         return;
       }
 
       logger.debug({ count: jobs.length }, 'Picked jobs for processing');
+      this.backoffMs = 0;
 
       // Mark all as processing atomically before we kick them off
       const ids = jobs.map((j) => j.id);
@@ -150,7 +156,11 @@ export class QueueProcessor {
         });
       }
     } catch (err) {
-      logger.error({ err }, 'Error during queue poll');
+      const nextBackoff = this.backoffMs === 0
+        ? this.backoffInitialMs
+        : Math.min(this.backoffMs * 2, this.backoffMaxMs);
+      this.backoffMs = nextBackoff;
+      logger.error({ err, backoffMs: nextBackoff }, 'Error during queue poll — backing off');
     } finally {
       this._scheduleNextPoll();
     }

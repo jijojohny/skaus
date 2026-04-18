@@ -23,9 +23,9 @@ export const config = {
   relayer: {
     privateKey: process.env.RELAYER_PRIVATE_KEY || '',
     feeBps: parseInt(process.env.RELAYER_FEE_BPS || '10', 10),
-    maxConcurrent: parseInt(process.env.RELAYER_MAX_CONCURRENT || '5', 10),
+    maxConcurrent: parseInt(process.env.RELAYER_MAX_CONCURRENT || '2', 10),
     maxAttempts: parseInt(process.env.RELAYER_MAX_ATTEMPTS || '3', 10),
-    pollIntervalMs: parseInt(process.env.RELAYER_POLL_INTERVAL_MS || '3000', 10),
+    pollIntervalMs: parseInt(process.env.RELAYER_POLL_INTERVAL_MS || '10000', 10),
     // Timeout for individual DB queries inside the poll loop (ms)
     dbQueryTimeoutMs: parseInt(process.env.RELAYER_DB_QUERY_TIMEOUT_MS || '8000', 10),
   },
