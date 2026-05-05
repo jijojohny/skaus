@@ -9,6 +9,25 @@ import { listPaymentRequests, lookupByAuthority, type PaymentRequestData } from 
 import { getPaymentRequestUrl, getPublicProfileUrl } from '@/lib/config';
 import QRCode from 'react-qr-code';
 
+const ACTIVE_STATUSES = new Set(['pending', 'partial']);
+const ARCHIVED_STATUSES = new Set(['paid', 'cancelled', 'expired']);
+
+const STATUS_LABELS: Record<string, string> = {
+  paid: 'PAID',
+  cancelled: 'CANCELLED',
+  expired: 'EXPIRED',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  paid: 'text-green-400 border-green-500/40',
+  cancelled: 'text-neutral-500 border-neutral-700',
+  expired: 'text-amber-500 border-amber-500/40',
+};
+
+function fmtAmt(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function DashboardLinksPage() {
   const router = useRouter();
   const { wallets } = useWallets();
@@ -19,6 +38,7 @@ export default function DashboardLinksPage() {
   const [loading, setLoading] = useState(true);
   const [qrFor, setQrFor] = useState<{ url: string; title: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     if (!walletAddress) return;
@@ -76,6 +96,9 @@ export default function DashboardLinksPage() {
   };
 
   const personalUrl = registeredName ? getPublicProfileUrl(registeredName) : '';
+
+  const activeRequests = requests.filter(r => r.slug !== 'personal' && ACTIVE_STATUSES.has(r.status));
+  const archivedRequests = requests.filter(r => r.slug !== 'personal' && ARCHIVED_STATUSES.has(r.status));
 
   return (
     <DashboardShell title="Links">
@@ -151,7 +174,7 @@ export default function DashboardLinksPage() {
             </div>
           )}
 
-          {requests.filter(req => req.slug !== 'personal').map(req => {
+          {activeRequests.map(req => {
             const url = getPaymentRequestUrl(req.username, req.slug);
             const payCount = req.payments?.length ?? 0;
             return (
@@ -231,18 +254,99 @@ export default function DashboardLinksPage() {
           <p className="text-xs text-skaus-muted mt-6 text-center">Loading links…</p>
         )}
 
-        <button
-          type="button"
-          className="mt-10 w-full rounded-2xl border border-skaus-border bg-skaus-surface/50 py-4 px-5 text-left text-sm text-skaus-muted hover:border-skaus-border-hover transition-colors flex items-center justify-between"
-        >
-          <span>
-            <span className="block font-semibold text-white">Archived links</span>
-            <span className="text-xs">Coming soon — view archived payment links.</span>
-          </span>
-          <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-        </button>
+        {/* Archived section */}
+        <div className="mt-10">
+          <button
+            type="button"
+            onClick={() => setShowArchived(v => !v)}
+            className="w-full flex items-center justify-between border border-neutral-800 bg-[#0a0a0a] px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <svg className="h-4 w-4 text-neutral-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+              </svg>
+              <span>
+                <span className="block text-[11px] font-bold tracking-[0.15em] text-white">ARCHIVED_LINKS</span>
+                <span className="text-[10px] text-neutral-600">
+                  {archivedRequests.length > 0
+                    ? `${archivedRequests.length} paid, cancelled, or expired link${archivedRequests.length !== 1 ? 's' : ''}`
+                    : 'No archived links yet'}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {archivedRequests.length > 0 && (
+                <span className="border border-neutral-700 px-2 py-0.5 text-[9px] font-bold tracking-wider text-neutral-500">
+                  {archivedRequests.length}
+                </span>
+              )}
+              <svg
+                className={`h-4 w-4 text-neutral-600 transition-transform ${showArchived ? 'rotate-90' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </div>
+          </button>
+
+          {showArchived && (
+            <div className="border-x border-b border-neutral-800">
+              {archivedRequests.length === 0 ? (
+                <p className="px-5 py-10 text-center text-[10px] text-neutral-600">
+                  Links you cancel or that expire will appear here.
+                </p>
+              ) : (
+                <div className="divide-y divide-neutral-800">
+                  {archivedRequests.map(req => {
+                    const url = getPaymentRequestUrl(req.username, req.slug);
+                    const revenue = (req.payments ?? []).reduce((s, p) => s + p.amount, 0);
+                    const payCount = req.payments?.length ?? 0;
+                    const statusLabel = STATUS_LABELS[req.status] ?? req.status.toUpperCase();
+                    const statusColor = STATUS_COLORS[req.status] ?? 'text-neutral-500 border-neutral-700';
+                    return (
+                      <div key={req.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 opacity-70 hover:opacity-100 transition-opacity">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-neutral-800 bg-neutral-950 text-[11px] font-black text-neutral-500">
+                            {(req.title || 'L')[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-[11px] font-bold text-neutral-300 truncate">
+                                {req.title || 'Payment link'}
+                              </p>
+                              <span className={`border px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${statusColor}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 font-mono text-[10px] text-neutral-600 truncate">{url}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6 text-[10px] shrink-0">
+                          <div className="text-right">
+                            <p className="text-neutral-600">PAYMENTS</p>
+                            <p className="font-bold text-neutral-400">{payCount}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-neutral-600">REVENUE</p>
+                            <p className="font-bold text-neutral-300">
+                              {revenue > 0 ? `$${fmtAmt(revenue)}` : '—'}
+                            </p>
+                          </div>
+                          <Link
+                            href={`/dashboard/links/${req.id}`}
+                            className="border border-neutral-700 px-3 py-1.5 text-[10px] font-bold tracking-wider text-neutral-500 hover:text-white hover:border-neutral-500 transition-colors"
+                          >
+                            VIEW
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {qrFor && (
