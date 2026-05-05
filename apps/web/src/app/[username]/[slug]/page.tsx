@@ -107,7 +107,7 @@ export default function PaymentRequestSlugPage({ params }: SlugPageProps) {
         await fetch(`${config.gatewayUrl}/requests/${request.id}/payment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ txSignature: result.signatures[0], amount: paidUsd }),
+          body: JSON.stringify({ txSignature: result.signatures[0], amount: paidUsd, payerAddress: walletAddress }),
         });
       } catch {
         /* non-critical */

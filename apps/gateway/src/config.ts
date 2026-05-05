@@ -55,4 +55,18 @@ export const config = {
 
   /** Used to build absolute pay links returned from POST /requests */
   webAppPublicUrl: (process.env.WEB_APP_PUBLIC_URL || 'http://localhost:4000').replace(/\/$/, ''),
+
+  /**
+   * 64-char hex string (32 bytes) used as AES-256-GCM master key for gated
+   * content URI encryption. Generate with: openssl rand -hex 32
+   * Falls back to a fixed dev key — override in production.
+   */
+  gatedContentKey: process.env.GATED_CONTENT_KEY
+    || 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+
+  /** Absolute directory where avatar images are stored on disk. */
+  uploadsDir: process.env.UPLOADS_DIR || './uploads',
+
+  /** Public base URL for the gateway (used to construct avatar URLs). */
+  gatewayPublicUrl: (process.env.GATEWAY_PUBLIC_URL || 'http://localhost:3001').replace(/\/$/, ''),
 } as const;

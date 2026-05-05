@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
+import { useWallets, useSignTransaction, useSignMessage } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { createPrivySolanaSigner } from '@/lib/privy-solana-signer';
-import { lookupName, fetchProfile, type NameLookupResult } from '@/lib/gateway';
+import { lookupName, fetchProfile, unlockGatedContent, type NameLookupResult } from '@/lib/gateway';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
 import { executeDeposit } from '@/lib/deposit';
@@ -69,12 +70,20 @@ const DEMO_PROFILES: Record<string, CompressedProfile> = {
 
 const MOCK_PROFILES: Record<string, CompressedProfile> = DEMO_MODE ? DEMO_PROFILES : {};
 
+interface UnlockItemState {
+  txSig: string;
+  unlocking: boolean;
+  result: string | null;
+  error: string | null;
+}
+
 export default function ProfilePage({ params }: ProfilePageProps) {
   const { username } = params;
-  const { authenticated, user } = usePrivy();
+  const { authenticated, user, login } = usePrivy();
   const { wallets } = useWallets();
   const solWallet = wallets[0];
   const { signTransaction: privySignTransaction } = useSignTransaction();
+  const { signMessage } = useSignMessage();
 
   const walletAddress = user?.wallet?.address || solWallet?.address;
 
@@ -97,6 +106,7 @@ export default function ProfilePage({ params }: ProfilePageProps) {
   const [txSignatures, setTxSignatures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState('');
+  const [unlockItems, setUnlockItems] = useState<Record<string, UnlockItemState>>({});
 
   useEffect(() => {
     async function load() {
@@ -184,6 +194,30 @@ export default function ProfilePage({ params }: ProfilePageProps) {
     }
   }, [walletAddress, connection, nameData, signTransaction, solWallet]);
 
+  const handleUnlock = useCallback(async (contentId: string) => {
+    if (!authenticated || !walletAddress || !solWallet) {
+      login();
+      return;
+    }
+    const txSig = (unlockItems[contentId]?.txSig || '').trim();
+    if (!txSig) return;
+
+    setUnlockItems(prev => ({ ...prev, [contentId]: { ...prev[contentId], unlocking: true, error: null, result: null } }));
+
+    try {
+      const challenge = `skaus-unlock-v1:${contentId}:${txSig}`;
+      const { signature } = await signMessage({
+        message: new TextEncoder().encode(challenge),
+        wallet: solWallet,
+      });
+      const challengeSignature = bs58.encode(signature);
+      const plainUri = await unlockGatedContent(username, contentId, txSig, walletAddress, challengeSignature);
+      setUnlockItems(prev => ({ ...prev, [contentId]: { ...prev[contentId], unlocking: false, result: plainUri } }));
+    } catch (err: any) {
+      setUnlockItems(prev => ({ ...prev, [contentId]: { ...prev[contentId], unlocking: false, error: err.message || 'Unlock failed' } }));
+    }
+  }, [authenticated, walletAddress, solWallet, signMessage, unlockItems, username, login]);
+
   if (loading) {
     return (
       <main className="flex items-center justify-center min-h-screen min-h-[100dvh] overflow-x-clip px-4">
@@ -215,8 +249,13 @@ export default function ProfilePage({ params }: ProfilePageProps) {
       <div className="relative z-10 w-full max-w-md min-w-0 space-y-6">
         {/* Avatar + Identity */}
         <div className="text-center space-y-3">
-          <div className="mx-auto w-20 h-20 rounded-2xl bg-skaus-primary/20 border border-skaus-primary/30 flex items-center justify-center text-3xl font-black text-skaus-primary">
-            {(profile?.displayName || username)[0].toUpperCase()}
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-skaus-primary/20 border border-skaus-primary/30 overflow-hidden flex items-center justify-center">
+            {profile?.avatarUri ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.avatarUri} alt={profile.displayName || username} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-3xl font-black text-skaus-primary">{(profile?.displayName || username)[0].toUpperCase()}</span>
+            )}
           </div>
           <h1 className="text-display-sm text-white">{profile?.displayName || username}</h1>
           <p className="text-sm text-skaus-muted max-w-xs mx-auto">{profile?.bio}</p>
@@ -353,17 +392,70 @@ export default function ProfilePage({ params }: ProfilePageProps) {
         {profile?.gatedContent && profile.gatedContent.length > 0 && (
           <div className="space-y-3">
             <h2 className="section-label text-center">EXCLUSIVE CONTENT</h2>
-            {profile.gatedContent.map((item) => (
-              <div key={item.contentId} className="glass-card p-4 flex items-center gap-3 opacity-75">
-                <svg className="w-5 h-5 text-skaus-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium text-white">{item.previewText}</p>
-                  <p className="text-xs text-skaus-muted">Unlock by supporting this creator</p>
+            {profile.gatedContent.map((item) => {
+              const state = unlockItems[item.contentId];
+              return (
+                <div key={item.contentId} className="glass-card p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-skaus-primary shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white">{item.previewText}</p>
+                      {item.accessCondition && (
+                        <p className="text-xs text-skaus-muted mt-0.5">
+                          {item.accessCondition.startsWith('tier:')
+                            ? `Requires: ${profile.tiers?.find(t => t.id === item.accessCondition?.slice(5))?.name || item.accessCondition}`
+                            : item.accessCondition}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {state?.result ? (
+                    <div className="p-3 bg-skaus-success/10 border border-skaus-success/30 rounded-lg space-y-1">
+                      <p className="text-xs text-skaus-success font-semibold">UNLOCKED</p>
+                      <a
+                        href={state.result}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs text-skaus-primary hover:underline break-all"
+                      >
+                        {state.result}
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-skaus-muted">Paste your payment transaction signature to unlock:</p>
+                      <input
+                        type="text"
+                        value={state?.txSig || ''}
+                        onChange={e => {
+                          const cid = item.contentId;
+                          const val = e.target.value;
+                          setUnlockItems(prev => {
+                            const existing = prev[cid] || { txSig: '', unlocking: false, result: null, error: null };
+                            return { ...prev, [cid]: { ...existing, txSig: val } };
+                          });
+                        }}
+                        placeholder="Transaction signature…"
+                        className="w-full bg-skaus-darker border border-skaus-border rounded-lg px-3 py-2 text-xs text-white placeholder-skaus-muted focus:outline-none focus:border-skaus-primary font-mono"
+                      />
+                      <button
+                        onClick={() => void handleUnlock(item.contentId)}
+                        disabled={!state?.txSig?.trim() || state?.unlocking}
+                        className="w-full btn-primary py-2 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {!authenticated ? 'LOGIN TO UNLOCK' : state?.unlocking ? 'VERIFYING…' : 'UNLOCK'}
+                      </button>
+                      {state?.error && (
+                        <p className="text-xs text-skaus-error">{state.error}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

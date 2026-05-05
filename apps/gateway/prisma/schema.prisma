@@ -107,12 +107,13 @@ model PaymentRequest {
 }
 
 model Payment {
-  id          Int            @id @default(autoincrement())
-  requestId   String
-  txSignature String
-  amount      Float
-  paidAt      BigInt
-  request     PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id           Int            @id @default(autoincrement())
+  requestId    String
+  txSignature  String
+  amount       Float
+  paidAt       BigInt
+  payerAddress String         @default("")
+  request      PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@map("payments")

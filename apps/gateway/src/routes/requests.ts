@@ -323,7 +323,7 @@ export async function requestRoutes(app: FastifyInstance) {
    */
   app.post<{
     Params: { id: string };
-    Body: { txSignature: string; amount: number };
+    Body: { txSignature: string; amount: number; payerAddress?: string };
   }>(
     '/:id/payment',
     async (request, reply) => {
@@ -343,12 +343,12 @@ export async function requestRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: `Request is ${stored.status}` });
       }
 
-      const { txSignature, amount } = request.body;
+      const { txSignature, amount, payerAddress } = request.body;
       const paidAt = BigInt(Date.now());
 
       // Append new payment
       await prisma.payment.create({
-        data: { requestId: row.id, txSignature, amount, paidAt },
+        data: { requestId: row.id, txSignature, amount, paidAt, payerAddress: payerAddress || '' },
       });
 
       // Re-read with updated payments to compute new status

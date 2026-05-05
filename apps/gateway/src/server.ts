@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
 import { relayRoutes } from './routes/relay';
 import { payLinkRoutes } from './routes/paylink';
 import { healthRoutes } from './routes/health';
@@ -9,6 +11,7 @@ import { nameRoutes } from './routes/names';
 import { requestRoutes } from './routes/requests';
 import { webhookRoutes } from './routes/webhooks';
 import { profileRoutes } from './routes/profiles';
+import { mediaRoutes } from './routes/media';
 import { config } from './config';
 import { prisma } from './db';
 
@@ -41,11 +44,14 @@ async function buildServer() {
   await app.register(requestRoutes, { prefix: '/requests' });
   await app.register(webhookRoutes, { prefix: '/webhooks' });
   await app.register(profileRoutes, { prefix: '/profiles' });
+  await app.register(mediaRoutes, { prefix: '/media' });
 
   return app;
 }
 
 async function main() {
+  await mkdir(join(config.uploadsDir, 'avatars'), { recursive: true });
+
   const app = await buildServer();
 
   // Connect to PostgreSQL before accepting requests

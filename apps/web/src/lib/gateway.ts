@@ -297,3 +297,71 @@ export async function searchProfiles(query: string, limit?: number): Promise<Com
   const data = await res.json();
   return data.results;
 }
+
+// ---------------------------------------------------------------------------
+// Gated content encryption
+// ---------------------------------------------------------------------------
+
+export async function encryptGatedUri(
+  username: string,
+  contentId: string,
+  plainUri: string,
+  authority: string,
+): Promise<string> {
+  const res = await fetch(`${config.gatewayUrl}/profiles/${encodeURIComponent(username)}/gated/encrypt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contentId, plainUri, authority }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Encryption failed');
+  }
+  const data = await res.json();
+  return data.encryptedUri as string;
+}
+
+export async function unlockGatedContent(
+  username: string,
+  contentId: string,
+  txSignature: string,
+  requesterAddress: string,
+  challengeSignature: string,
+): Promise<string> {
+  const res = await fetch(
+    `${config.gatewayUrl}/profiles/${encodeURIComponent(username)}/gated/${encodeURIComponent(contentId)}/access`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txSignature, requesterAddress, challengeSignature }),
+    },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Access denied');
+  }
+  const data = await res.json();
+  return data.plainUri as string;
+}
+
+// ---------------------------------------------------------------------------
+// Avatar upload
+// ---------------------------------------------------------------------------
+
+export async function uploadAvatar(
+  username: string,
+  base64: string,
+  contentType: string,
+): Promise<string> {
+  const res = await fetch(`${config.gatewayUrl}/media/avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, base64, contentType }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Upload failed');
+  }
+  const data = await res.json();
+  return data.url as string;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, Transaction } from '@solana/web3.js';
 import { DashboardShell } from '@/components/DashboardShell';
@@ -10,6 +10,8 @@ import {
   linkProfileToChain,
   confirmProfileOnChain,
   lookupByAuthority,
+  encryptGatedUri,
+  uploadAvatar,
   type UpdateProfileResult,
 } from '@/lib/gateway';
 import type { CompressedProfile, PaymentTier, GatedContentPointer } from '@skaus/types';
@@ -48,6 +50,13 @@ export default function SettingsPage() {
   // Form — gated content
   const [gatedContent, setGatedContent] = useState<GatedContentPointer[]>([]);
   const [expandedContent, setExpandedContent] = useState<number | null>(null);
+  const [encryptingContent, setEncryptingContent] = useState<number | null>(null);
+
+  // Avatar upload
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadAvatarError, setUploadAvatarError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Save / compression
   const [saving, setSaving] = useState(false);
@@ -172,6 +181,88 @@ export default function SettingsPage() {
 
   const updateContent = (i: number, f: keyof GatedContentPointer, v: string) =>
     setGatedContent(prev => prev.map((c, idx) => idx === i ? { ...c, [f]: v } : c));
+
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+
+  const handleAvatarFile = (file: File) => {
+    if (!username) return;
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setUploadAvatarError('Only JPEG, PNG, or WebP images are allowed.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadAvatarError('Image must be under 5 MB.');
+      return;
+    }
+
+    setUploadAvatarError(null);
+    setUploadingAvatar(true);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUri = e.target?.result as string;
+      const img = new Image();
+      img.onload = async () => {
+        // Resize to max 256×256 client-side before uploading
+        const MAX = 256;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const outType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const resizedDataUri = canvas.toDataURL(outType, 0.82);
+        setAvatarPreview(resizedDataUri);
+
+        // Strip "data:<type>;base64," prefix
+        const base64 = resizedDataUri.split(',')[1];
+        try {
+          const url = await uploadAvatar(username, base64, outType);
+          setAvatarUri(url);
+        } catch (err: any) {
+          setUploadAvatarError(err.message || 'Upload failed.');
+        } finally {
+          setUploadingAvatar(false);
+        }
+      };
+      img.onerror = () => {
+        setUploadAvatarError('Could not read image file.');
+        setUploadingAvatar(false);
+      };
+      img.src = dataUri;
+    };
+    reader.onerror = () => {
+      setUploadAvatarError('Could not read file.');
+      setUploadingAvatar(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ── Gated content encryption ──────────────────────────────────────────────
+
+  const handleEncryptContent = async (i: number) => {
+    if (!username || !walletAddress) return;
+    const item = gatedContent[i];
+    const plainUri = item.encryptedUri;
+    if (!plainUri || plainUri.startsWith('enc:v1:')) return;
+
+    setEncryptingContent(i);
+    try {
+      const encrypted = await encryptGatedUri(username, item.contentId, plainUri, walletAddress);
+      updateContent(i, 'encryptedUri', encrypted);
+    } catch (err: any) {
+      // Surface error inline — no global banner
+      alert(`Encryption failed: ${err.message}`);
+    } finally {
+      setEncryptingContent(null);
+    }
+  };
 
   // ── Save ─────────────────────────────────────────────────────────────────
 
@@ -335,10 +426,71 @@ export default function SettingsPage() {
               className="input-field mt-1.5 resize-none" />
             <p className="mt-1 text-right text-[10px] text-neutral-600">{bio.length}/280</p>
           </Field>
-          <Field label="AVATAR_URI">
-            <input type="url" value={avatarUri} onChange={e => setAvatarUri(e.target.value)}
-              placeholder="https://..." className="input-field mt-1.5 font-mono text-sm" />
-            <p className="mt-1 text-[10px] text-neutral-600">Paste an image URL — no file upload</p>
+          <Field label="AVATAR">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleAvatarFile(f); e.target.value = ''; }}
+            />
+
+            <div className="mt-1.5 flex items-center gap-4">
+              {/* Avatar preview */}
+              <div className="h-16 w-16 shrink-0 border border-neutral-800 bg-neutral-900 overflow-hidden flex items-center justify-center">
+                {(avatarPreview || avatarUri) ? (
+                  <img
+                    src={avatarPreview || avatarUri}
+                    alt="Avatar preview"
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarPreview(null)}
+                  />
+                ) : (
+                  <span className="text-xl font-black text-neutral-600">
+                    {(displayName || username || '?')[0]?.toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="flex items-center gap-2 border border-neutral-700 px-3 py-2 text-[10px] font-bold tracking-wider text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors disabled:opacity-50"
+                >
+                  {uploadingAvatar ? (
+                    <>
+                      <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
+                      UPLOADING...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      UPLOAD_IMAGE
+                    </>
+                  )}
+                </button>
+                {uploadAvatarError && (
+                  <p className="text-[10px] text-red-400">{uploadAvatarError}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Fallback URL input */}
+            <div className="mt-3">
+              <p className="mb-1 text-[9px] font-bold tracking-[0.15em] text-neutral-600">OR PASTE URL</p>
+              <input
+                type="url"
+                value={avatarUri}
+                onChange={e => { setAvatarUri(e.target.value); setAvatarPreview(null); }}
+                placeholder="https://..."
+                className="input-field font-mono text-sm"
+              />
+            </div>
           </Field>
         </Section>
 
@@ -535,13 +687,54 @@ export default function SettingsPage() {
                     </p>
                   </Field>
                   <Field label="CONTENT_URI">
-                    <input type="url" value={item.encryptedUri}
-                      onChange={e => updateContent(i, 'encryptedUri', e.target.value)}
-                      placeholder="https://..."
-                      className="input-field mt-1.5 text-sm font-mono" />
-                    <p className="mt-1 text-[10px] text-neutral-600">
-                      Link to the content — encryption coming soon
-                    </p>
+                    {item.encryptedUri.startsWith('enc:v1:') ? (
+                      <div className="mt-1.5 flex items-center gap-3 border border-neutral-800 bg-[#0a0a0a] px-3 py-2.5">
+                        <svg className="h-4 w-4 shrink-0 text-skaus-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold tracking-[0.15em] text-skaus-primary">ENCRYPTED</p>
+                          <p className="text-[9px] text-neutral-600 font-mono truncate">{item.encryptedUri.slice(0, 40)}…</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateContent(i, 'encryptedUri', '')}
+                          className="shrink-0 text-[9px] font-bold tracking-wider text-neutral-600 hover:text-red-400 transition-colors"
+                        >
+                          CLEAR
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={item.encryptedUri}
+                            onChange={e => updateContent(i, 'encryptedUri', e.target.value)}
+                            placeholder="https://..."
+                            className="input-field flex-1 text-sm font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleEncryptContent(i)}
+                            disabled={!item.encryptedUri || encryptingContent === i}
+                            className="shrink-0 flex items-center gap-1.5 border border-skaus-primary/60 bg-skaus-primary/10 px-3 py-2 text-[10px] font-bold tracking-wider text-skaus-primary hover:bg-skaus-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {encryptingContent === i ? (
+                              <span className="h-3 w-3 rounded-full border border-skaus-primary border-t-transparent animate-spin" />
+                            ) : (
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            )}
+                            ENCRYPT
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-neutral-600">
+                          Paste the content URL then click ENCRYPT before saving
+                        </p>
+                      </div>
+                    )}
                   </Field>
                 </div>
               )}
