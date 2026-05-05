@@ -71,21 +71,31 @@ export async function profileRoutes(app: FastifyInstance) {
    * Response:
    *   { success: true, username, compressedHash, compressedOnChain, compressionTxSig }
    */
-  app.put<{ Params: { username: string }; Body: CompressedProfile }>(
+  app.put<{ Params: { username: string }; Body: CompressedProfile & { authority?: string } }>(
     '/:username',
     async (request, reply) => {
       const { username } = request.params;
-      const profile = request.body;
+      const { authority, ...profile } = request.body;
 
       if (!profile.displayName) {
         return reply.status(400).send({ error: 'displayName is required' });
       }
 
-      const result = await upsertProfile(username, {
-        ...profile,
-        version: (profile.version || 0) + 1,
-        updatedAt: Date.now(),
-      });
+      let authorityPubkey: PublicKey | undefined;
+      if (authority) {
+        try {
+          authorityPubkey = new PublicKey(authority);
+        } catch {
+          return reply.status(400).send({ error: 'Invalid authority pubkey' });
+        }
+      }
+
+      const result = await upsertProfile(
+        username,
+        { ...profile, version: (profile.version || 0) + 1, updatedAt: Date.now() },
+        undefined,
+        authorityPubkey,
+      );
 
       return reply.send({
         success: true,

@@ -16,6 +16,7 @@
  *   get a transaction for the user to sign, which stores the compressedHash in
  *   NameRecord.profile_cid on the name-registry program.
  */
+import { PublicKey } from '@solana/web3.js';
 import { prisma } from '../db';
 import { compressProfile, fetchProfileFromChain } from './compression';
 import type { CompressedProfile } from '@skaus/types';
@@ -103,21 +104,21 @@ export async function upsertProfile(
   username: string,
   profile: CompressedProfile,
   nameHash?: string,
+  authorityPubkey?: PublicKey,
 ): Promise<UpsertResult> {
   const key = username.toLowerCase();
 
-  // Read current compressedHash (if any) so we know whether to create or update.
+  // Read current compression state so we know whether to create or update.
   const existing = await prisma.profile.findUnique({
     where: { username: key },
-    select: { compressedHash: true },
+    select: { compressedHash: true, compressedOnChain: true },
   });
 
-  // 1. ZK compression (non-blocking failure).
-  const compressionResult = await compressProfile(
-    key,
-    profile,
-    existing?.compressedHash ?? null,
-  );
+  // 1. ZK compression — only when an authority pubkey is available.
+  //    Without it we cannot derive a per-user address, so we skip on-chain writes.
+  const compressionResult = authorityPubkey
+    ? await compressProfile(key, profile, existing?.compressedHash ?? null, authorityPubkey)
+    : null;
 
   // 2. Persist to Postgres.
   const ts = BigInt(profile.updatedAt ?? Date.now());
@@ -125,8 +126,10 @@ export async function upsertProfile(
     where: { username: key },
     update: {
       nameHash:           nameHash ?? undefined,
-      compressedHash:     compressionResult.hash,
-      compressedOnChain:  compressionResult.onChain,
+      ...(compressionResult && {
+        compressedHash:    compressionResult.hash,
+        compressedOnChain: compressionResult.onChain,
+      }),
       displayName:        profile.displayName,
       bio:                profile.bio,
       avatarUri:          profile.avatarUri ?? '',
@@ -140,8 +143,8 @@ export async function upsertProfile(
     create: {
       username:           key,
       nameHash:           nameHash ?? null,
-      compressedHash:     compressionResult.hash,
-      compressedOnChain:  compressionResult.onChain,
+      compressedHash:     compressionResult?.hash ?? null,
+      compressedOnChain:  compressionResult?.onChain ?? false,
       displayName:        profile.displayName,
       bio:                profile.bio,
       avatarUri:          profile.avatarUri ?? '',
@@ -155,9 +158,9 @@ export async function upsertProfile(
   });
 
   return {
-    compressedHash:           compressionResult.hash,
-    compressedOnChain:        compressionResult.onChain,
-    compressionTxSignature:   compressionResult.txSignature,
+    compressedHash:         compressionResult?.hash ?? existing?.compressedHash ?? '',
+    compressedOnChain:      compressionResult?.onChain ?? existing?.compressedOnChain ?? false,
+    compressionTxSignature: compressionResult?.txSignature ?? null,
   };
 }
 

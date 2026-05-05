@@ -235,13 +235,58 @@ export async function fetchProfile(username: string): Promise<CompressedProfile 
   return res.json();
 }
 
-export async function updateProfile(username: string, profile: CompressedProfile): Promise<void> {
+export interface UpdateProfileResult {
+  compressedHash: string;
+  compressedOnChain: boolean;
+  compressionTxSig: string | null;
+}
+
+export async function updateProfile(
+  username: string,
+  profile: CompressedProfile,
+  authority: string,
+): Promise<UpdateProfileResult> {
   const res = await fetch(`${config.gatewayUrl}/profiles/${username}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(profile),
+    body: JSON.stringify({ ...profile, authority }),
   });
   if (!res.ok) throw new Error('Failed to update profile');
+  const data = await res.json();
+  return {
+    compressedHash: data.compressedHash,
+    compressedOnChain: data.compressedOnChain,
+    compressionTxSig: data.compressionTxSig ?? null,
+  };
+}
+
+export async function linkProfileToChain(
+  username: string,
+  authority: string,
+): Promise<{ transaction: string; hash: string }> {
+  const res = await fetch(`${config.gatewayUrl}/profiles/${username}/link-to-chain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authority }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Failed to build link-to-chain transaction');
+  }
+  return res.json();
+}
+
+export async function confirmProfileOnChain(
+  username: string,
+  hash: string,
+  txSignature: string,
+): Promise<void> {
+  const res = await fetch(`${config.gatewayUrl}/profiles/${username}/confirm-on-chain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hash, txSignature }),
+  });
+  if (!res.ok) throw new Error('Failed to confirm profile on-chain');
 }
 
 export async function searchProfiles(query: string, limit?: number): Promise<CompressedProfile[]> {

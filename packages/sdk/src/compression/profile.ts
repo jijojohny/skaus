@@ -133,16 +133,25 @@ function buildAccountData(profileBytes: Buffer): CompressedAccountData {
  *   - newAddressParams: non-existence proof for the derived address
  *   - outputCompressedAccounts: the profile data as CompressedAccountData
  *
+ * @param payer      Keypair that signs and pays (gateway relayer).
+ * @param ownerPubkey  User's authority pubkey — drives address derivation so
+ *                     each user gets a unique compressed account address.
+ *                     Defaults to payer.publicKey when omitted (single-user / test).
+ *
  * @returns The deterministic account address (hex) + tx signature.
  *          Pass the address to buildUpdateProfileTx to link it on-chain.
  */
 export async function createCompressedProfile(
   rpc: Rpc,
-  owner: Keypair,
+  payer: Keypair,
   profile: CompressedProfile,
+  ownerPubkey?: PublicKey,
 ): Promise<CompressedAccountInfo> {
   const profileBytes = encodeProfile(profile);
-  const addressSeed = deriveProfileAddressSeed(owner.publicKey);
+  // Address is derived from the user's pubkey so every user has a unique account.
+  // The payer (relayer) remains the account owner and signs all transactions.
+  const addressOwner = ownerPubkey ?? payer.publicKey;
+  const addressSeed = deriveProfileAddressSeed(addressOwner);
   const address = deriveAddress(addressSeed);
 
   // Non-existence validity proof for the new address.
@@ -162,8 +171,9 @@ export async function createCompressedProfile(
   remainingAccounts = rem1;
 
   // Build output compressed account with profile data payload.
+  // Account owner is the payer (relayer) — it signs all future updates.
   const outputAccount = createCompressedAccountLegacy(
-    owner.publicKey,
+    payer.publicKey,
     bn(0),
     buildAccountData(profileBytes),
     Array.from(address.toBytes()),
@@ -197,9 +207,9 @@ export async function createCompressedProfile(
     isCompress: false,
   };
 
-  const ix = buildInvokeInstruction(owner.publicKey, remainingAccounts, ixData);
+  const ix = buildInvokeInstruction(payer.publicKey, remainingAccounts, ixData);
   const { blockhash } = await rpc.getLatestBlockhash();
-  const tx = buildAndSignTx([ix], owner, blockhash);
+  const tx = buildAndSignTx([ix], payer, blockhash);
   const txSignature = await sendAndConfirmTx(rpc, tx);
 
   return {
@@ -248,7 +258,7 @@ export async function readCompressedProfile(
  */
 export async function updateCompressedProfile(
   rpc: Rpc,
-  owner: Keypair,
+  payer: Keypair,
   currentHash: string,
   updatedProfile: CompressedProfile,
 ): Promise<CompressedAccountInfo> {
@@ -270,9 +280,9 @@ export async function updateCompressedProfile(
   // (Legacy drops the `readOnly` boolean; all other fields are identical.)
   const inputLegacy = current as unknown as CompressedAccountWithMerkleContextLegacy;
 
-  // Updated output at the same address.
+  // Updated output at the same address. Payer (relayer) remains account owner.
   const outputAccount = createCompressedAccountLegacy(
-    owner.publicKey,
+    payer.publicKey,
     bn(0),
     buildAccountData(profileBytes),
     current.address ?? undefined,  // same address → deterministic key preserved
@@ -297,9 +307,9 @@ export async function updateCompressedProfile(
     isCompress: false,
   };
 
-  const ix = buildInvokeInstruction(owner.publicKey, remainingAccounts, ixData);
+  const ix = buildInvokeInstruction(payer.publicKey, remainingAccounts, ixData);
   const { blockhash } = await rpc.getLatestBlockhash();
-  const tx = buildAndSignTx([ix], owner, blockhash);
+  const tx = buildAndSignTx([ix], payer, blockhash);
   const txSignature = await sendAndConfirmTx(rpc, tx);
 
   // Address is unchanged; return the same hash.

@@ -89,15 +89,13 @@ export async function compressProfile(
   username: string,
   profile: CompressedProfile,
   existingHash: string | null,
+  authorityPubkey: PublicKey,
 ): Promise<ProfileCompressionResult> {
   const relayer = getRelayerKeypair();
 
-  // Stable local hash — the deterministic compressed account address derived
-  // from the relayer's pubkey. Used as Postgres cache key even when ZK
-  // compression is disabled.
-  const localHash = computeAccountHash(
-    relayer?.publicKey ?? PublicKey.default,
-  );
+  // Per-user deterministic hash derived from the user's authority pubkey.
+  // Used as Postgres cache key and as the compressed account address.
+  const localHash = computeAccountHash(authorityPubkey);
 
   if (!config.compression.enabled) {
     return { hash: localHash, onChain: false, txSignature: null };
@@ -115,7 +113,8 @@ export async function compressProfile(
     if (existingHash) {
       result = await updateCompressedProfile(rpc, relayer, existingHash, profile);
     } else {
-      result = await createCompressedProfile(rpc, relayer, profile);
+      // Pass authorityPubkey so each user gets a unique compressed account address.
+      result = await createCompressedProfile(rpc, relayer, profile, authorityPubkey);
     }
 
     return { hash: result.hash, onChain: true, txSignature: result.txSignature };
