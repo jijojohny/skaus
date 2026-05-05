@@ -12,6 +12,7 @@ import { requestRoutes } from './routes/requests';
 import { webhookRoutes } from './routes/webhooks';
 import { profileRoutes } from './routes/profiles';
 import { mediaRoutes } from './routes/media';
+import { analyticsRoutes } from './routes/analytics';
 import { config } from './config';
 import { prisma } from './db';
 
@@ -45,6 +46,7 @@ async function buildServer() {
   await app.register(webhookRoutes, { prefix: '/webhooks' });
   await app.register(profileRoutes, { prefix: '/profiles' });
   await app.register(mediaRoutes, { prefix: '/media' });
+  await app.register(analyticsRoutes, { prefix: '/analytics' });
 
   return app;
 }

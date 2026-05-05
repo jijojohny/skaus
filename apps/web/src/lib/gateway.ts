@@ -345,6 +345,35 @@ export async function unlockGatedContent(
 }
 
 // ---------------------------------------------------------------------------
+// GoldRush analytics
+// ---------------------------------------------------------------------------
+
+export interface WalletTokenBalance {
+  symbol: string;
+  name: string;
+  balance: string;
+  decimals: number;
+  usdRate: number;
+  usdValue: number;
+  logoUrl: string | null;
+}
+
+/**
+ * Fetch on-chain token balances for a Solana wallet via GoldRush (mainnet).
+ * Returns an empty array if the GOLDRUSH_API_KEY is not configured on the gateway.
+ */
+export async function fetchWalletBalances(address: string): Promise<WalletTokenBalance[]> {
+  try {
+    const res = await fetch(`${config.gatewayUrl}/analytics/balances/${encodeURIComponent(address)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.balances ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Avatar upload
 // ---------------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { createPrivySolanaSigner } from '@/lib/privy-solana-signer';
 import { lookupName, fetchProfile, unlockGatedContent, type NameLookupResult } from '@/lib/gateway';
+import { WalletBalanceWidget } from '@/components/WalletBalanceWidget';
 import { DepositForm } from '@/components/DepositForm';
 import { TransactionStatus } from '@/components/TransactionStatus';
 import { executeDeposit } from '@/lib/deposit';
@@ -328,6 +329,16 @@ export default function ProfilePage({ params }: ProfilePageProps) {
               </div>
             ) : txStatus === 'idle' || txStatus === 'error' ? (
               <>
+                {walletAddress && (
+                  <div className="pb-1 space-y-1">
+                    <p className="text-[10px] font-semibold tracking-wider text-skaus-muted">YOUR MAINNET BALANCE</p>
+                    <WalletBalanceWidget
+                      address={walletAddress}
+                      highlight={profile?.paymentConfig?.acceptedTokens}
+                      compact
+                    />
+                  </div>
+                )}
                 <DepositForm onSubmit={handleDeposit} />
                 {error && (
                   <div className="p-3 bg-skaus-error/10 border border-skaus-error/30 rounded-lg text-sm text-skaus-error">

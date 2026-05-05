@@ -69,4 +69,11 @@ export const config = {
 
   /** Public base URL for the gateway (used to construct avatar URLs). */
   gatewayPublicUrl: (process.env.GATEWAY_PUBLIC_URL || 'http://localhost:3001').replace(/\/$/, ''),
+
+  /**
+   * GoldRush (Covalent) API key for blockchain data enrichment.
+   * Sign up at https://goldrush.dev to get a key.
+   * When empty, analytics endpoints return empty data gracefully.
+   */
+  goldrushApiKey: process.env.GOLDRUSH_API_KEY || '',
 } as const;

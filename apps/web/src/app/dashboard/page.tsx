@@ -6,6 +6,7 @@ import { useWallets, useSignMessage } from '@privy-io/react-auth/solana';
 import { useRouter } from 'next/navigation';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getRelayStatus, lookupByAuthority } from '@/lib/gateway';
+import { WalletBalanceWidget } from '@/components/WalletBalanceWidget';
 import { scanForDeposits, scanDepositsOnChain, type ScannedDeposit } from '@/lib/scan';
 import { executeWithdraw } from '@/lib/withdraw';
 import { config, getPublicProfileUrl } from '@/lib/config';
@@ -510,6 +511,11 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* On-chain holdings (GoldRush) */}
+          {walletAddress && (
+            <WalletBalanceWidget address={walletAddress} />
+          )}
 
           {/* Transaction ledger */}
           <div id="transaction-ledger" className="border border-neutral-800 bg-[#0a0a0a]">
