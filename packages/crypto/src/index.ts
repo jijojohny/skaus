@@ -12,4 +12,6 @@ export {
   derivePathKeys,
   validateName,
 } from './name-registry';
-export type { StealthMetaAddress, DepositNoteData, ViewingCredential, WithdrawalProofInput } from './types';
+export type { StealthMetaAddress, DepositNoteData, ViewingCredential, EncryptedViewingCredential, WithdrawalProofInput } from './types';
+export type { ViewingScope } from './viewing-key';
+export { issueViewingCredential, decryptViewingCredential } from './viewing-key';

@@ -12,9 +12,13 @@
   },
   "dependencies": {
     "@lightprotocol/stateless.js": "^0.22.0",
+    "@skaus/crypto": "workspace:*",
     "@skaus/types": "workspace:*",
+    "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
-    "borsh": "^2.0.0"
+    "borsh": "^2.0.0",
+    "circomlibjs": "0.1.7",
+    "snarkjs": "^0.7.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

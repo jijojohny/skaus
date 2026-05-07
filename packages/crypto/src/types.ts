@@ -19,8 +19,17 @@ export interface ViewingCredential {
     startTime: number;
     endTime: number;
     tokenMints?: string[];
+    maxAmount?: bigint;
   };
   issuedTo: Uint8Array;   // Auditor's public key
+  issuedAt: number;
+}
+
+export interface EncryptedViewingCredential {
+  /** Ephemeral X25519 pubkey used to derive the ECDH shared secret. */
+  ephemeralPubkey: Uint8Array;
+  /** Encrypted + authenticated ViewingCredential payload. */
+  ciphertext: Uint8Array;
   issuedAt: number;
 }
 
